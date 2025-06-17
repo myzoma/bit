@@ -587,7 +587,6 @@ function updateIndicator() {
         const atrLengthEl = document.getElementById('atrLength');
         const atrMarginEl = document.getElementById('atrMargin');
         const smaLengthEl = document.getElementById('smaLength
-        const smaLengthEl = document.getElementById('smaLength');
         const timeframeEl = document.getElementById('timeframe');
         const symbolEl = document.getElementById('symbol');
         
