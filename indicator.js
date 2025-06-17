@@ -1,3 +1,5 @@
+// إصلاح الأخطاء في ملف المؤشر الرئيسي
+
 class TrendChangeIndicator {
     constructor() {
         this.config = {
@@ -12,251 +14,83 @@ class TrendChangeIndicator {
         
         this.data = [];
         this.canvas = document.getElementById('chart');
-        this.ctx = this.canvas.getContext('2d');
+        this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
         
-        this.initializeEventListeners();
-        this.generateSampleData();
-        this.calculate();
+        if (this.ctx) {
+            this.initializeEventListeners();
+            this.generateSampleData();
+            this.calculate();
+        }
     }
 
     initializeEventListeners() {
-        document.getElementById('emaFast').addEventListener('change', (e) => {
-            this.config.emaFast = parseInt(e.target.value);
-        });
-        
-        document.getElementById('emaSlow').addEventListener('change', (e) => {
-            this.config.emaSlow = parseInt(e.target.value);
-        });
-        
-        document.getElementById('atrLength').addEventListener('change', (e) => {
-            this.config.atrLength = parseInt(e.target.value);
-        });
-        
-        document.getElementById('atrMargin').addEventListener('change', (e) => {
-            this.config.atrMargin = parseFloat(e.target.value);
-        });
-        
-        document.getElementById('smaLength').addEventListener('change', (e) => {
-            this.config.smaLength = parseInt(e.target.value);
-        });
-        
-        document.getElementById('timeframe').addEventListener('change', (e) => {
-            this.config.timeframe = e.target.value;
-        });
-        
-        document.getElementById('symbol').addEventListener('change', (e) => {
-            this.config.symbol = e.target.value;
-        });
-    }
+        const elements = {
+            emaFast: document.getElementById('emaFast'),
+            emaSlow: document.getElementById('emaSlow'),
+            atrLength: document.getElementById('atrLength'),
+            atrMargin: document.getElementById('atrMargin'),
+            smaLength: document.getElementById('smaLength'),
+            timeframe: document.getElementById('timeframe'),
+            symbol: document.getElementById('symbol')
+        };
 
-    // حساب المتوسط المتحرك الأسي
-    calculateEMA(data, period) {
-        const ema = [];
-        const multiplier = 2 / (period + 1);
-        
-        ema[0] = data[0];
-        
-        for (let i = 1; i < data.length; i++) {
-            ema[i] = (data[i] * multiplier) + (ema[i - 1] * (1 - multiplier));
-        }
-        
-        return ema;
-    }
-
-    // حساب المتوسط المتحرك البسيط
-    calculateSMA(data, period) {
-        const sma = [];
-        
-        for (let i = 0; i < data.length; i++) {
-            if (i < period - 1) {
-                sma[i] = null;
-            } else {
-                let sum = 0;
-                for (let j = 0; j < period; j++) {
-                    sum += data[i - j];
-                }
-                sma[i] = sum / period;
-            }
-        }
-        
-        return sma;
-    }
-
-    // حساب ATR
-    calculateATR(highs, lows, closes, period) {
-        const trueRanges = [];
-        const atr = [];
-        
-        for (let i = 1; i < closes.length; i++) {
-            const tr1 = highs[i] - lows[i];
-            const tr2 = Math.abs(highs[i] - closes[i - 1]);
-            const tr3 = Math.abs(lows[i] - closes[i - 1]);
-            
-            trueRanges[i] = Math.max(tr1, tr2, tr3);
-        }
-        
-        // حساب ATR باستخدام SMA للفترات الأولى
-        for (let i = period; i < trueRanges.length; i++) {
-            if (i === period) {
-                let sum = 0;
-                for (let j = 1; j <= period; j++) {
-                    sum += trueRanges[i - j + 1];
-                }
-                atr[i] = sum / period;
-            } else {
-                atr[i] = (atr[i - 1] * (period - 1) + trueRanges[i]) / period;
-            }
-        }
-        
-        return atr;
-    }
-
-    // توليد بيانات تجريبية
-    generateSampleData() {
-        this.data = [];
-        let basePrice = 50000;
-        
-        for (let i = 0; i < 200; i++) {
-            const change = (Math.random() - 0.5) * 1000;
-            basePrice += change;
-            
-            const high = basePrice + Math.random() * 500;
-            const low = basePrice - Math.random() * 500;
-            const close = basePrice + (Math.random() - 0.5) * 200;
-            
-            this.data.push({
-                timestamp: Date.now() - (200 - i) * 24 * 60 * 60 * 1000,
-                open: basePrice,
-                high: high,
-                low: low,
-                close: close
+        // التحقق من وجود العناصر قبل إضافة المستمعين
+        if (elements.emaFast) {
+            elements.emaFast.addEventListener('change', (e) => {
+                this.config.emaFast = parseInt(e.target.value);
+                this.calculate();
             });
-            
-            basePrice = close;
-        }
-    }
-
-    // الحسابات الرئيسية
-    calculate() {
-        const closes = this.data.map(d => d.close);
-        const highs = this.data.map(d => d.high);
-        const lows = this.data.map(d => d.low);
-        
-        // حساب EMAs
-        const emaFast = this.calculateEMA(closes, this.config.emaFast);
-        const emaSlow = this.calculateEMA(closes, this.config.emaSlow);
-        
-        // حساب ATR
-        const atr = this.calculateATR(highs, lows, closes, this.config.atrLength);
-        
-        // حساب SMA
-        const sma = this.calculateSMA(closes, this.config.smaLength);
-        
-        // تحديد الاتجاهات
-        const currentIndex = closes.length - 1;
-        const emaFastCurrent = emaFast[currentIndex];
-        const emaSlowCurrent = emaSlow[currentIndex];
-        const atrCurrent = atr[currentIndex] || 100;
-        
-        const emaDiff = emaFastCurrent - emaSlowCurrent;
-        const atrThreshold = this.config.atrMargin * atrCurrent;
-        
-        const isBull = emaDiff > atrThreshold;
-        const isBear = emaDiff < -atrThreshold;
-        const isOver = emaFastCurrent > emaSlowCurrent;
-        
-        // تحديث واجهة المستخدم
-        this.updateStatus(isBull, isBear, isOver);
-        this.checkAlerts(isBull, isBear);
-        this.drawChart(closes, emaFast, emaSlow, sma);
-        
-        // حفظ النتائج للاستخدام المستقبلي
-        this.results = {
-            emaFast,
-            emaSlow,
-            sma,
-            atr,
-            isBull,
-            isBear,
-            isOver
-        };
-    }
-
-    // تحديث حالة المؤشرات
-    updateStatus(isBull, isBear, isOver) {
-        const timeframeStatus = document.getElementById('timeframeStatus');
-        const dailyStatus = document.getElementById('dailyStatus');
-        const overallTrend = document.getElementById('overallTrend');
-        
-        // حالة الإطار الزمني المحدد
-        if (isBull) {
-            timeframeStatus.textContent = 'صاعد';
-            timeframeStatus.className = 'status-cell bull';
-        } else if (isBear) {
-            timeframeStatus.textContent = 'هابط';
-            timeframeStatus.className = 'status-cell bear';
-        } else {
-            timeframeStatus.textContent = 'محايد';
-            timeframeStatus.className = 'status-cell neutral';
         }
         
-        // حالة اليومي (محاكاة)
-        const dailyBull = Math.random() >
-class TrendChangeIndicator {
-    constructor() {
-        this.config = {
-            emaFast: 30,
-            emaSlow: 60,
-            atrLength: 60,
-            atrMargin: 0.3,
-            smaLength: 140,
-            timeframe: '4H',
-            symbol: 'BTCUSDT'
-        };
+        if (elements.emaSlow) {
+            elements.emaSlow.addEventListener('change', (e) => {
+                this.config.emaSlow = parseInt(e.target.value);
+                this.calculate();
+            });
+        }
         
-        this.data = [];
-        this.canvas = document.getElementById('chart');
-        this.ctx = this.canvas.getContext('2d');
+        if (elements.atrLength) {
+            elements.atrLength.addEventListener('change', (e) => {
+                this.config.atrLength = parseInt(e.target.value);
+                this.calculate();
+            });
+        }
         
-        this.initializeEventListeners();
-        this.generateSampleData();
-        this.calculate();
-    }
-
-    initializeEventListeners() {
-        document.getElementById('emaFast').addEventListener('change', (e) => {
-            this.config.emaFast = parseInt(e.target.value);
-        });
+        if (elements.atrMargin) {
+            elements.atrMargin.addEventListener('change', (e) => {
+                this.config.atrMargin = parseFloat(e.target.value);
+                this.calculate();
+            });
+        }
         
-        document.getElementById('emaSlow').addEventListener('change', (e) => {
-            this.config.emaSlow = parseInt(e.target.value);
-        });
+        if (elements.smaLength) {
+            elements.smaLength.addEventListener('change', (e) => {
+                this.config.smaLength = parseInt(e.target.value);
+                this.calculate();
+            });
+        }
         
-        document.getElementById('atrLength').addEventListener('change', (e) => {
-            this.config.atrLength = parseInt(e.target.value);
-        });
+        if (elements.timeframe) {
+            elements.timeframe.addEventListener('change', (e) => {
+                this.config.timeframe = e.target.value;
+                this.calculate();
+            });
+        }
         
-        document.getElementById('atrMargin').addEventListener('change', (e) => {
-            this.config.atrMargin = parseFloat(e.target.value);
-        });
-        
-        document.getElementById('smaLength').addEventListener('change', (e) => {
-            this.config.smaLength = parseInt(e.target.value);
-        });
-        
-        document.getElementById('timeframe').addEventListener('change', (e) => {
-            this.config.timeframe = e.target.value;
-        });
-        
-        document.getElementById('symbol').addEventListener('change', (e) => {
-            this.config.symbol = e.target.value;
-        });
+        if (elements.symbol) {
+            elements.symbol.addEventListener('change', (e) => {
+                this.config.symbol = e.target.value;
+                this.calculate();
+            });
+        }
     }
 
     // حساب المتوسط المتحرك الأسي
     calculateEMA(data, period) {
         const ema = [];
         const multiplier = 2 / (period + 1);
+        
+        if (data.length === 0) return ema;
         
         ema[0] = data[0];
         
@@ -290,6 +124,8 @@ class TrendChangeIndicator {
     calculateATR(highs, lows, closes, period) {
         const trueRanges = [];
         const atr = [];
+        
+        if (closes.length < 2) return atr;
         
         for (let i = 1; i < closes.length; i++) {
             const tr1 = highs[i] - lows[i];
@@ -343,8 +179,13 @@ class TrendChangeIndicator {
     // حساب توقعات SMA
     calculateSMAForecasts(closes, sma, smaLength) {
         const forecasts = [];
+        
+        if (sma.length === 0 || closes.length === 0) return forecasts;
+        
         const currentSMA = sma[sma.length - 1];
         const currentClose = closes[closes.length - 1];
+        
+        if (currentSMA === null || currentSMA === undefined) return forecasts;
         
         for (let days = 1; days <= 9; days++) {
             let forecast = currentSMA;
@@ -355,7 +196,7 @@ class TrendChangeIndicator {
             
             // طرح الأسعار القديمة
             for (let j = 0; j < days; j++) {
-                if (smaLength - 1 - j >= 0) {
+                if (smaLength - 1 - j >= 0 && closes.length - 1 - (smaLength - 1 - j) >= 0) {
                     numerator -= closes[closes.length - 1 - (smaLength - 1 - j)];
                 }
             }
@@ -369,6 +210,8 @@ class TrendChangeIndicator {
 
     // الحسابات الرئيسية
     calculate() {
+        if (!this.data || this.data.length === 0) return;
+        
         const closes = this.data.map(d => d.close);
         const highs = this.data.map(d => d.high);
         const lows = this.data.map(d => d.low);
@@ -388,8 +231,8 @@ class TrendChangeIndicator {
         
         // تحديد الاتجاهات للإطار الزمني المحدد
         const currentIndex = closes.length - 1;
-        const emaFastCurrent = emaFast[currentIndex];
-        const emaSlowCurrent = emaSlow[currentIndex];
+        const emaFastCurrent = emaFast[currentIndex] || 0;
+        const emaSlowCurrent = emaSlow[currentIndex] || 0;
         const atrCurrent = atr[currentIndex] || 100;
         
         const emaDiff = emaFastCurrent - emaSlowCurrent;
@@ -409,7 +252,6 @@ class TrendChangeIndicator {
         const warningBull = isBullDaily && isBearTimeframe;
         const warningBear = isBearDaily && isBullTimeframe;
         const warning = warningBull || warningBear;
-        
         // تحديد تغيير الاتجاه
         const noTrend = !isBullDaily && !isBearDaily;
         const trend = isBullDaily || isBearDaily;
@@ -418,7 +260,10 @@ class TrendChangeIndicator {
         this.updateStatus(isBullTimeframe, isBearTimeframe, isOverTimeframe, 
                          isBullDaily, isBearDaily, isOverDaily);
         this.checkAlerts(warning, warningBull, warningBear, noTrend);
-        this.drawChart(closes, emaFast, emaSlow, sma, smaForecasts);
+        
+        if (this.ctx) {
+            this.drawChart(closes, emaFast, emaSlow, sma, smaForecasts);
+        }
         
         // حفظ النتائج للاستخدام المستقبلي
         this.results = {
@@ -451,6 +296,9 @@ class TrendChangeIndicator {
         const timeframeStatus = document.getElementById('timeframeStatus');
         const dailyStatus = document.getElementById('dailyStatus');
         const overallTrend = document.getElementById('overallTrend');
+        
+        // التحقق من وجود العناصر
+        if (!timeframeStatus || !dailyStatus || !overallTrend) return;
         
         // حالة الإطار الزمني المحدد
         if (isBullTimeframe) {
@@ -498,6 +346,8 @@ class TrendChangeIndicator {
     // فحص التحذيرات
     checkAlerts(warning, warningBull, warningBear, trendChange) {
         const alertsContainer = document.getElementById('alerts');
+        if (!alertsContainer) return;
+        
         alertsContainer.innerHTML = '';
         
         if (trendChange) {
@@ -519,8 +369,10 @@ class TrendChangeIndicator {
         }
     }
 
-       // رسم الرسم البياني
+    // رسم الرسم البياني
     drawChart(closes, emaFast, emaSlow, sma, smaForecasts) {
+        if (!this.ctx || !this.canvas) return;
+        
         const ctx = this.ctx;
         const canvas = this.canvas;
         
@@ -539,6 +391,9 @@ class TrendChangeIndicator {
         // حساب القيم الدنيا والعليا
         const allValues = [...visibleCloses, ...visibleEmaFast, ...visibleEmaSlow, 
                           ...visibleSma.filter(v => v !== null), ...smaForecasts];
+        
+        if (allValues.length === 0) return;
+        
         const minValue = Math.min(...allValues);
         const maxValue = Math.max(...allValues);
         const range = maxValue - minValue;
@@ -631,6 +486,8 @@ class TrendChangeIndicator {
     
     // ملء المنطقة بين الخطوط
     fillBetweenLines(ctx, data1, data2, xScale, yScale) {
+        if (data1.length === 0 || data2.length === 0) return;
+        
         const currentEmaFast = data1[data1.length - 1];
         const currentEmaSlow = data2[data2.length - 1];
         
@@ -645,12 +502,14 @@ class TrendChangeIndicator {
         ctx.beginPath();
         
         // رسم الخط العلوي
+        let started = false;
         for (let i = 0; i < data1.length; i++) {
             if (data1[i] !== null && data2[i] !== null) {
                 const x = xScale(i);
                 const y = yScale(data1[i]);
-                if (i === 0) {
+                if (!started) {
                     ctx.moveTo(x, y);
+                    started = true;
                 } else {
                     ctx.lineTo(x, y);
                 }
@@ -723,31 +582,58 @@ class TrendChangeIndicator {
 function updateIndicator() {
     if (window.trendIndicator) {
         // تحديث الإعدادات من المدخلات
-        window.trendIndicator.config.emaFast = parseInt(document.getElementById('emaFast').value);
-        window.trendIndicator.config.emaSlow = parseInt(document.getElementById('emaSlow').value);
-        window.trendIndicator.config.atrLength = parseInt(document.getElementById('atrLength').value);
-        window.trendIndicator.config.atrMargin = parseFloat(document.getElementById('atrMargin').value);
-        window.trendIndicator.config.smaLength = parseInt(document.getElementById('smaLength').value);
-        window.trendIndicator.config.timeframe = document.getElementById('timeframe').value;
-        window.trendIndicator.config.symbol = document.getElementById('symbol').value;
+        const emaFastEl = document.getElementById('emaFast');
+        const emaSlowEl = document.getElementById('emaSlow');
+        const atrLengthEl = document.getElementById('atrLength');
+        const atrMarginEl = document.getElementById('atrMargin');
+        const smaLengthEl = document.getElementById('smaLength
+        const smaLengthEl = document.getElementById('smaLength');
+        const timeframeEl = document.getElementById('timeframe');
+        const symbolEl = document.getElementById('symbol');
+        
+        // التحقق من وجود العناصر قبل التحديث
+        if (emaFastEl) window.trendIndicator.config.emaFast = parseInt(emaFastEl.value);
+        if (emaSlowEl) window.trendIndicator.config.emaSlow = parseInt(emaSlowEl.value);
+        if (atrLengthEl) window.trendIndicator.config.atrLength = parseInt(atrLengthEl.value);
+        if (atrMarginEl) window.trendIndicator.config.atrMargin = parseFloat(atrMarginEl.value);
+        if (smaLengthEl) window.trendIndicator.config.smaLength = parseInt(smaLengthEl.value);
+        if (timeframeEl) window.trendIndicator.config.timeframe = timeframeEl.value;
+        if (symbolEl) window.trendIndicator.config.symbol = symbolEl.value;
         
         // إعادة توليد البيانات وإعادة الحساب
         window.trendIndicator.generateSampleData();
         window.trendIndicator.calculate();
+        
+        // إظهار إشعار التحديث
+        if (window.notificationManager) {
+            window.notificationManager.success('تم تحديث المؤشر بنجاح');
+        }
     }
 }
 
 // تهيئة المؤشر عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', function() {
-    window.trendIndicator = new TrendChangeIndicator();
-    
-    // تحديث تلقائي كل 30 ثانية
-    setInterval(() => {
-        if (window.trendIndicator) {
-            window.trendIndicator.generateSampleData();
-            window.trendIndicator.calculate();
+    try {
+        window.trendIndicator = new TrendChangeIndicator();
+        
+        // تحديث تلقائي كل 30 ثانية
+        setInterval(() => {
+            if (window.trendIndicator) {
+                window.trendIndicator.generateSampleData();
+                window.trendIndicator.calculate();
+            }
+        }, 30000);
+        
+        // إظهار إشعار التهيئة
+        if (window.notificationManager) {
+            window.notificationManager.success('تم تهيئة المؤشر بنجاح');
         }
-    }, 30000);
+    } catch (error) {
+        console.error('خطأ في تهيئة المؤشر:', error);
+        if (window.notificationManager) {
+            window.notificationManager.error('خطأ في تهيئة المؤشر');
+        }
+    }
 });
 
 // إضافة دعم للبيانات الحقيقية من API
@@ -762,6 +648,11 @@ class DataProvider {
         try {
             const url = `${this.baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
             const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
             
             return data.map(kline => ({
@@ -774,6 +665,9 @@ class DataProvider {
             }));
         } catch (error) {
             console.error('خطأ في جلب البيانات:', error);
+            if (window.notificationManager) {
+                window.notificationManager.error('خطأ في جلب البيانات من API');
+            }
             return null;
         }
     }
@@ -786,7 +680,8 @@ class DataProvider {
             '4H': '4h',
             '6H': '6h',
             '8H': '8h',
-            '12H': '12h'
+            '12H': '12h',
+            '1D': '1d'
         };
         return mapping[timeframe] || '4h';
     }
@@ -794,29 +689,188 @@ class DataProvider {
 
 // دالة لاستخدام البيانات الحقيقية
 async function useRealData() {
-    const dataProvider = new DataProvider();
-    const symbol = document.getElementById('symbol').value;
-    const timeframe = document.getElementById('timeframe').value;
-    
-    const interval = dataProvider.convertTimeframe(timeframe);
-    const data = await dataProvider.fetchKlineData(symbol, interval);
-    
-    if (data && window.trendIndicator) {
-        window.trendIndicator.data = data;
-        window.trendIndicator.calculate();
+    try {
+        if (window.notificationManager) {
+            window.notificationManager.show('جاري جلب البيانات...', 'info');
+        }
+        
+        const dataProvider = new DataProvider();
+        const symbolEl = document.getElementById('symbol');
+        const timeframeEl = document.getElementById('timeframe');
+        
+        const symbol = symbolEl ? symbolEl.value : 'BTCUSDT';
+        const timeframe = timeframeEl ? timeframeEl.value : '4H';
+        
+        const interval = dataProvider.convertTimeframe(timeframe);
+        const data = await dataProvider.fetchKlineData(symbol, interval);
+        
+        if (data && window.trendIndicator) {
+            window.trendIndicator.data = data;
+            window.trendIndicator.calculate();
+            
+            if (window.notificationManager) {
+                window.notificationManager.success('تم جلب البيانات الحقيقية بنجاح');
+            }
+        } else {
+            throw new Error('فشل في جلب البيانات');
+        }
+    } catch (error) {
+        console.error('خطأ في استخدام البيانات الحقيقية:', error);
+        if (window.notificationManager) {
+            window.notificationManager.error('فشل في جلب البيانات الحقيقية');
+        }
     }
 }
 
-// إضافة زر للبيانات الحقيقية في HTML
+// دالة تصدير البيانات
+function exportData() {
+    if (!window.trendIndicator || !window.trendIndicator.results) {
+        if (window.notificationManager) {
+            window.notificationManager.warning('لا توجد بيانات للتصدير');
+        }
+        return;
+    }
+    
+    try {
+        const exportData = {
+            config: window.trendIndicator.config,
+            results: window.trendIndicator.results,
+            timestamp: new Date().toISOString()
+        };
+        
+        if (window.exportManager) {
+            window.exportManager.exportData(exportData, 'trend-indicator-data', 'json');
+            if (window.notificationManager) {
+                window.notificationManager.success('تم تصدير البيانات بنجاح');
+            }
+        }
+    } catch (error) {
+        console.error('خطأ في تصدير البيانات:', error);
+        if (window.notificationManager) {
+            window.notificationManager.error('فشل في تصدير البيانات');
+        }
+    }
+}
+
+// دالة حفظ الإعدادات
+function saveSettings() {
+    if (!window.trendIndicator || !window.storageManager) return;
+    
+    try {
+        const settings = window.trendIndicator.config;
+        window.storageManager.save('settings', settings);
+        
+        if (window.notificationManager) {
+            window.notificationManager.success('تم حفظ الإعدادات');
+        }
+    } catch (error) {
+        console.error('خطأ في حفظ الإعدادات:', error);
+        if (window.notificationManager) {
+            window.notificationManager.error('فشل في حفظ الإعدادات');
+        }
+    }
+}
+
+// دالة تحميل الإعدادات
+function loadSettings() {
+    if (!window.trendIndicator || !window.storageManager) return;
+    
+    try {
+        const settings = window.storageManager.load('settings');
+        if (settings) {
+            // تحديث الإعدادات
+            Object.assign(window.trendIndicator.config, settings);
+            
+            // تحديث واجهة المستخدم
+            const elements = {
+                emaFast: document.getElementById('emaFast'),
+                emaSlow: document.getElementById('emaSlow'),
+                atrLength: document.getElementById('atrLength'),
+                atrMargin: document.getElementById('atrMargin'),
+                smaLength: document.getElementById('smaLength'),
+                timeframe: document.getElementById('timeframe'),
+                symbol: document.getElementById('symbol')
+            };
+            
+            if (elements.emaFast) elements.emaFast.value = settings.emaFast;
+            if (elements.emaSlow) elements.emaSlow.value = settings.emaSlow;
+            if (elements.atrLength) elements.atrLength.value = settings.atrLength;
+            if (elements.atrMargin) elements.atrMargin.value = settings.atrMargin;
+            if (elements.smaLength) elements.smaLength.value = settings.smaLength;
+            if (elements.timeframe) elements.timeframe.value = settings.timeframe;
+            if (elements.symbol) elements.symbol.value = settings.symbol;
+            
+            // إعادة حساب المؤشر
+            window.trendIndicator.calculate();
+            
+            if (window.notificationManager) {
+                window.notificationManager.success('تم تحميل الإعدادات');
+            }
+        }
+    } catch (error) {
+        console.error('خطأ في تحميل الإعدادات:', error);
+        if (window.notificationManager) {
+            window.notificationManager.error('فشل في تحميل الإعدادات');
+        }
+    }
+}
+
+// دالة إعادة تعيين الإعدادات
+function resetSettings() {
+    if (!window.trendIndicator) return;
+    
+    try {
+        // الإعدادات الافتراضية
+        const defaultSettings = {
+            emaFast: 30,
+            emaSlow: 60,
+            atrLength: 60,
+            atrMargin: 0.3,
+            smaLength: 140,
+            timeframe: '4H',
+            symbol: 'BTCUSDT'
+        };
+        
+        // تحديث الإعدادات
+        Object.assign(window.trendIndicator.config, defaultSettings);
+        
+        // تحديث واجهة المستخدم
+        const elements = {
+            emaFast: document.getElementById('emaFast'),
+            emaSlow: document.getElementById('emaSlow'),
+            atrLength: document.getElementById('atrLength'),
+            atrMargin: document.getElementById('atrMargin'),
+            smaLength: document.getElementById('smaLength'),
+            timeframe: document.getElementById('timeframe'),
+            symbol: document.getElementById('symbol')
+        };
+        
+        if (elements.emaFast) elements.emaFast.value = defaultSettings.emaFast;
+        if (elements.emaSlow) elements.emaSlow.value = defaultSettings.emaSlow;
+        if (elements.atrLength) elements.atrLength.value = defaultSettings.atrLength;
+        if (elements.atrMargin) elements.atrMargin.value = defaultSettings.atrMargin;
+        if (elements.smaLength) elements.smaLength.value = defaultSettings.smaLength;
+        if (elements.timeframe) elements.timeframe.value = defaultSettings.timeframe;
+        if (elements.symbol) elements.symbol.value = defaultSettings.symbol;
+        
+        // إعادة حساب المؤشر
+        window.trendIndicator.generateSampleData();
+        window.trendIndicator.calculate();
+        
+        if (window.notificationManager) {
+            window.notificationManager.success('تم إعادة تعيين الإعدادات');
+        }
+    } catch (error) {
+        console.error('خطأ في إعادة تعيين الإعدادات:', error);
+        if (window.notificationManager) {
+            window.notificationManager.error('فشل في إعادة تعيين الإعدادات');
+        }
+    }
+}
+
+// تحميل الإعدادات المحفوظة عند بدء التطبيق
 document.addEventListener('DOMContentLoaded', function() {
-    const controlsDiv = document.querySelector('.controls');
-    const realDataButton = document.createElement('div');
-    realDataButton.className = 'control-group';
-    realDataButton.innerHTML = `
-        <label>&nbsp;</label>
-        <button onclick="useRealData()" style="padding: 5px 15px; background-color: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">
-            استخدام البيانات الحقيقية
-        </button>
-    `;
-    controlsDiv.appendChild(realDataButton);
+    setTimeout(() => {
+        loadSettings();
+    }, 1000);
 });
