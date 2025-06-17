@@ -363,3 +363,529 @@ body {
         border: 1px solid black;
     }
 }
+/* إضافة الأنيميشن المفقود */
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* تحسين مظهر الأزرار الإضافية */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.action-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    color: white;
+}
+
+.action-button.primary {
+    background-color: #007bff;
+}
+
+.action-button.success {
+    background-color: #28a745;
+}
+
+.action-button.warning {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.action-button.danger {
+    background-color: #dc3545;
+}
+
+.action-button.secondary {
+    background-color: #6c757d;
+}
+
+.action-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.action-button:active {
+    transform: translateY(0);
+}
+
+/* تحسين مظهر شريط التقدم */
+.progress-container {
+    margin: 20px 0;
+}
+
+.progress-label {
+    color: #ccc;
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+/* تحسين الاستجابة للأجهزة المحمولة */
+@media (max-width: 480px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .controls {
+        gap: 10px;
+    }
+    
+    .control-group {
+        min-width: 100%;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .action-button {
+        width: 100%;
+    }
+    
+    h1 {
+        font-size: 1.8em;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+}
+
+/* تحسين مظهر التحذيرات */
+.alert {
+    border-radius: 8px;
+    border-left: 4px solid;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border-left-color: #ffc107;
+    color: #ffc107;
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-left-color: #dc3545;
+    color: #dc3545;
+}
+
+.alert-success {
+    background-color: rgba(40, 167, 69, 0.1);
+    border-left-color: #28a745;
+    color: #28a745;
+}
+
+.alert-info {
+    background-color: rgba(0, 123, 255, 0.1);
+    border-left-color: #007bff;
+    color: #007bff;
+}
+
+/* تحسين مظهر الجدول */
+.status-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background: rgba(42, 42, 42, 0.8);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.status-table th,
+.status-table td {
+    padding: 12px 15px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.status-table th {
+    background-color: rgba(0, 0, 0, 0.3);
+    font-weight: bold;
+    color: #007bff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.status-table tr:last-child td {
+    border-bottom: none;
+}
+
+.status-table tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* تحسين مظهر خلايا الحالة */
+.status-cell {
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    min-width: 80px;
+}
+
+.status-cell.bull {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.status-cell.bear {
+    background: linear-gradient(135deg, #dc3545, #e74c3c);
+    color: white;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+.status-cell.neutral {
+    background: linear-gradient(135deg, #6c757d, #adb5bd);
+    color: white;
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+}
+
+/* تحسين مظهر المدخلات والتحكم */
+.control-group {
+    background: rgba(42, 42, 42, 0.6);
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.control-group:hover {
+    border-color: #007bff;
+    background: rgba(42, 42, 42, 0.8);
+}
+
+.control-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: #007bff;
+    font-size: 12px;
+}
+
+.control-group input,
+.control-group select {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    color: white;
+    font-size: 14px;
+}
+
+.control-group input:focus,
+.control-group select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* تحسين مظهر الرسم البياني */
+.chart-container {
+    position: relative;
+    background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+    border: 2px solid rgba(0, 123, 255, 0.3);
+    border-radius: 15px;
+    padding: 10px;
+    margin: 20px 0;
+    overflow: hidden;
+}
+
+.chart-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(0, 123, 255, 0.1) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+#chart {
+    position: relative;
+    z-index: 1;
+    border-radius: 10px;
+}
+
+/* تحسين مظهر الحاوية الرئيسية */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background: rgba(26, 26, 26, 0.9);
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* تحسين مظهر العنوان */
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 2.5em;
+    font-weight: bold;
+    background: linear-gradient(45deg, #007bff, #00ff88, #007bff);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 3s ease-in-out infinite;
+    text-shadow: 0 0 20px rgba(0, 123, 255, 0.5);
+}
+
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+/* تحسين مظهر الأقسام */
+.section {
+    margin: 30px 0;
+    padding: 20px;
+    background: rgba(42, 42, 42, 0.3);
+    border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-title {
+    color: #007bff;
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* تحسين مظهر التحديثات التلقائية */
+.auto-update-indicator {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 123, 255, 0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    z-index: 1000;
+    animation: pulse 2s infinite;
+}
+
+/* تحسين مظهر حالة الاتصال */
+.connection-status {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 1000;
+}
+
+.connection-status.online {
+    background: rgba(40, 167, 69, 0.8);
+    color: white;
+}
+
+.connection-status.offline {
+    background: rgba(220, 53, 69, 0.8);
+    color: white;
+}
+
+/* تحسين مظهر الإحصائيات */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.stat-card {
+    background: rgba(42, 42, 42, 0.6);
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
+    border-color: #007bff;
+}
+
+.stat-value {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #007bff;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    color: #ccc;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* تحسين مظهر التحكم في الصوت */
+.sound-control {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(42, 42, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.sound-control:hover {
+    background: rgba(0, 123, 255, 0.8);
+    transform: scale(1.1);
+}
+
+.sound-control.muted {
+    background: rgba(220, 53, 69, 0.8);
+}
+
+/* تحسين مظهر التلميحات */
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 1000;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+}
+
+/* تحسين مظهر شريط التحميل */
+.loading-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.loading-progress {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #00ff88);
+    width: 0%;
+    transition: width 0.3s ease;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: 200px 0; }
+}
+
+/* تحسين الطباعة */
+@media print {
+    * {
+        -webkit-print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+    
+    .no-print {
+        display: none !important;
+    }
+    
+    .container {
+        box-shadow: none;
+        border: 1px solid #000;
+    }
+    
+    .chart-container {
+        border: 2px solid #000;
+        background: white !important;
+    }
+}
+
+/* تحسين إمكانية الوصول */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* تحسين التركيز للوحة المفاتيح */
+button:focus,
+input:focus,
+select:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+/* تحسين مظهر الحالة النشطة */
+.active {
+    background-color: #007bff !important;
+    color: white !important;
+}
+
+/* تحسين مظهر العناصر المعطلة */
+.disabled,
+button:disabled,
+input:disabled,
+select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
