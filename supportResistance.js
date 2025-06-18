@@ -145,13 +145,12 @@ class SupportResistanceAnalyzer {
             console.log(`تم العثور على ${filteredStats.length} عملة مرشحة للتحليل`);
 
             // تحليل كل عملة بالتفصيل
-            const cryptoPromises = filteredStats.map(async (stat) => {
+           c (stat) => {
                 try {
                     const symbol = stat.symbol;
                     const klineData = await this.fetchKlineData(symbol);
                     
                     if (klineData.length < 50) return null;
-
                     const liquidity = await this.fetchOrderBookDepth(symbol);
                     
                     return {
@@ -162,7 +161,7 @@ class SupportResistanceAnalyzer {
                         volume24h: parseFloat(stat.volume),
                         change24h: parseFloat(stat.priceChangePercent),
                         liquidity: liquidity,
-                        marketCap: parseFloat(stat.lastPrice) * parseFloat(stat.volume), // تقدير تقريبي
+                        marketCap: parseFloat(stat.lastPrice) * parseFloat(stat.volume),
                         rawData: stat
                     };
                 } catch (error) {
@@ -171,7 +170,7 @@ class SupportResistanceAnalyzer {
                 }
             });
 
-            // انتظار جميع الطلبات مع معالجة الأخطاء
+            // انتظار جميع الطلبات
             const results = await Promise.allSettled(cryptoPromises);
             this.cryptoData = results
                 .filter(result => result.status === 'fulfilled' && result.value !== null)
@@ -182,19 +181,17 @@ class SupportResistanceAnalyzer {
             // تحليل الاختراقات
             this.analyzeBreakouts();
             
-            // تحديث الإحصائيات
-            this.updateStats();
-            
-            // عرض أفضل النتائج
+            // عرض النتائج
             this.filterAndDisplayBreakouts();
             
         } catch (error) {
             console.error('خطأ في تحميل البيانات:', error);
-            this.showError('فشل في تحميل البيانات من Binance. سيتم المحاولة مرة أخرى...');
+            this.showError('فشل في تحميل البيانات من Binance');
         } finally {
             this.showLoading(false);
         }
     }
+
 
     // حساب نقاط الدعم والمقاومة
     calculatePivotPoints(priceHistory) {
@@ -529,20 +526,21 @@ class SupportResistanceAnalyzer {
         document.getElementById('nextUpdate').textContent = nextUpdate.toLocaleTimeString('ar-SA');
     }
 
-    showLoading(show) {
+      showLoading(show) {
         const spinner = document.getElementById('loadingSpinner');
         const grid = document.getElementById('cryptoGrid');
         
         if (show) {
-            spinner.style.display = 'flex';
-            grid.style.opacity = '0.5';
+            if (spinner) spinner.style.display = 'flex';
+            if (grid) grid.style.opacity = '0.5';
         } else {
-            spinner.style.display = 'none';
-            grid.style.opacity = '1';
+            if (spinner) spinner.style.display = 'none';
+            if (grid) grid.style.opacity = '1';
         }
     }
 
-    showError(message) {
+
+      showError(message) {
         const grid = document.getElementById('cryptoGrid');
         grid.innerHTML = `
             <div class="error-message">
@@ -554,6 +552,7 @@ class SupportResistanceAnalyzer {
             </div>
         `;
     }
+
 
     // عرض تحليل مفصل
     showDetailedAnalysis(symbol) {
