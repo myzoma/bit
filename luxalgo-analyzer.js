@@ -7,95 +7,8 @@ class LuxAlgoBreakoutAnalyzer {
         this.rightBars = 15;
         this.volumeThresh = 20;
         this.updateInterval = null;
-          this.isPaused = false;
-    this.currentFilter = 'all';
-        setupEventListeners() {
-             const pauseBtn = document.getElementById('pauseBtn');
-    if (pauseBtn) {
-        pauseBtn.addEventListener('click', () => {
-            this.togglePause();
-        });
-    }
-             const resetBtn = document.getElementById('resetBtn');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            this.resetData();
-        });
-    }
-               document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            this.setFilter(e.target.dataset.filter);
-            
-            // تحديث الواجهة
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-        });
-    });
-}
-
-// وظيفة الإيقاف المؤقت
-togglePause() {
-    this.isPaused = !this.isPaused;
-    const pauseBtn = document.getElementById('pauseBtn');
-    
-    if (this.isPaused) {
-        pauseBtn.textContent = '▶️ استئناف';
-        pauseBtn.classList.add('paused');
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-        }
-    } else {
-        pauseBtn.textContent = '⏸️ إيقاف مؤقت';
-        pauseBtn.classList.remove('paused');
-        this.startPeriodicUpdate();
-    }
-}
-
-// وظيفة إعادة التعيين
-resetData() {
-    this.cryptoData.clear();
-    this.priceHistory.clear();
-    
-    const grid = document.getElementById('cryptoGrid');
-    if (grid) {
-        grid.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>جاري إعادة تحميل البيانات...</p></div>';
-    }
-    
-    // إعادة الاتصال
-    if (this.ws) {
-        this.ws.close();
-    }
-    setTimeout(() => this.connectWebSocket(), 1000);
-}
-
-// وظيفة المرشح
-setFilter(filter) {
-    this.currentFilter = filter;
-    this.analyzeLuxAlgoBreaks();
-}
-
-// تحديث displayLuxAlgoSignals لتطبيق المرشح
-displayLuxAlgoSignals(signals) {
-    const grid = document.getElementById('cryptoGrid');
-    if (!grid) return;
-
-    // تطبيق المرشح
-    let filteredSignals = signals;
-    if (this.currentFilter !== 'all') {
-        filteredSignals = signals.filter(sig => sig.type === this.currentFilter);
-    }
-
-    // تحديث عداد الإشارات
-    const signalCount = document.getElementById('signalCount');
-    if (signalCount) {
-        signalCount.textContent = filteredSignals.length;
-    }
-
-    if (filteredSignals.length === 0) {
-        grid.innerHTML = '<div class="no-data">🔍 لا توجد إشارات مطابقة للمرشح المحدد</div>';
-        return;
-    }
-
+        this.isPaused = false;
+        this.currentFilter = 'all';
         this.init();
     }
 
@@ -106,317 +19,393 @@ displayLuxAlgoSignals(signals) {
     }
 
     connectWebSocket() {
-        const symbols = [
-            'btcusdt', 'ethusdt', 'bnbusdt', 'adausdt', 'xrpusdt',
-            'solusdt', 'dotusdt', 'dogeusdt', 'avaxusdt', 'linkusdt',
-            'ltcusdt', 'bchusdt', 'xlmusdt', 'vetusdt', 'filusdt',
-            'trxusdt', 'etcusdt', 'xmrusdt', 'algousdt', 'atomusdt'
-        ];
+        const symbols = ['btcusdt', 'ethusdt', 'adausdt', 'bnbusdt', 'xrpusdt', 'solusdt', 'dogeusdt', 'avaxusdt', 'linkusdt', 'maticusdt'];
+        
+        this.updateConnectionStatus('جاري الاتصال...', 'connecting');
+        
+        symbols.forEach(symbol => {
+            this.fetchHistoricalData(symbol).then(() => {
+                this.connectKlineStream(symbol);
+            });
+        });
+    }
 
-        // استخدام kline بدلاً من ticker
-        const streams = symbols.map(symbol => `${symbol}@kline_1m`).join('/');
-        this.ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
+    async fetchHistoricalData(symbol) {
+        try {
+            const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`);
+            const data = await response.json();
+            
+            const candles = data.map(k => ({
+                time: k[0],
+                open: parseFloat(k[1]),
+                high: parseFloat(k[2]),
+                low: parseFloat(k[3]),
+                close: parseFloat(k[4]),
+                volume: parseFloat(k[5])
+            }));
+            
+            this.priceHistory.set(symbol, candles);
+            console.log(`تم جلب ${candles.length} شمعة للرمز ${symbol}`);
+        } catch (error) {
+            console.error(`خطأ في جلب بيانات ${symbol}:`, error);
+        }
+    }
 
-        this.ws.onopen = () => {
-            this.updateConnectionStatus('متصل', 'connected');
-            console.log('WebSocket connected');
-            // جلب البيانات التاريخية للرموز
-            this.fetchHistoricalData(symbols);
-        };
-
-        this.ws.onmessage = (event) => {
+    connectKlineStream(symbol) {
+        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
+        
+        ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            if (data.k) {
-                this.processKline(data.k);
+            const kline = data.k;
+            
+            if (kline.x) { // شمعة مكتملة
+                const candleData = {
+                    time: kline.t,
+                    open: parseFloat(kline.o),
+                    high: parseFloat(kline.h),
+                    low: parseFloat(kline.l),
+                    close: parseFloat(kline.c),
+                    volume: parseFloat(kline.v)
+                };
+                
+                this.updatePriceHistory(symbol, candleData);
+                this.updateConnectionStatus('متصل', 'connected');
             }
         };
-
-        this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
+        
+        ws.onerror = (error) => {
+            console.error(`خطأ في WebSocket لـ ${symbol}:`, error);
             this.updateConnectionStatus('خطأ في الاتصال', 'error');
         };
-
-        this.ws.onclose = () => {
-            this.updateConnectionStatus('منقطع', 'error');
-            setTimeout(() => this.connectWebSocket(), 5000);
+        
+        ws.onclose = () => {
+            console.log(`انقطع الاتصال مع ${symbol}`);
+            setTimeout(() => this.connectKlineStream(symbol), 5000);
         };
     }
 
-    // جلب البيانات التاريخية
-    async fetchHistoricalData(symbols) {
-        for (const symbol of symbols) {
-            try {
-                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`);
-                const data = await response.json();
-                
-                if (data && Array.isArray(data)) {
-                    const history = data.map(kline => ({
-                        timestamp: kline[0],
-                        open: parseFloat(kline[1]),
-                        high: parseFloat(kline[2]),
-                        low: parseFloat(kline[3]),
-                        close: parseFloat(kline[4]),
-                        volume: parseFloat(kline[5])
-                    }));
-                    
-                    this.priceHistory.set(symbol, history);
-                    
-                    // تحديث cryptoData أيضاً
-                    const lastCandle = history[history.length - 1];
-                    this.cryptoData.set(symbol, {
-                        symbol: symbol,
-                        price: lastCandle.close,
-                        volume: lastCandle.volume,
-                        priceChange: ((lastCandle.close - lastCandle.open) / lastCandle.open) * 100,
-                        high24h: lastCandle.high,
-                        low24h: lastCandle.low,
-                        history: history
-                    });
-                }
-            } catch (error) {
-                console.error(`Error fetching data for ${symbol}:`, error);
-            }
-        }
-        
-        // تحليل البيانات بعد جلبها
-        setTimeout(() => this.analyzeLuxAlgoBreaks(), 1000);
-    }
-
-    processKline(kline) {
-        const symbol = kline.s.toLowerCase();
-        
+    updatePriceHistory(symbol, newCandle) {
         if (!this.priceHistory.has(symbol)) {
             this.priceHistory.set(symbol, []);
         }
-
+        
         const history = this.priceHistory.get(symbol);
-        const candleData = {
-            timestamp: kline.t,
-            open: parseFloat(kline.o),
-            high: parseFloat(kline.h),
-            low: parseFloat(kline.l),
-            close: parseFloat(kline.c),
-            volume: parseFloat(kline.v)
-        };
-
-        // إضافة الشمعة الجديدة أو تحديث الأخيرة
-        if (history.length > 0 && history[history.length - 1].timestamp === kline.t) {
-            history[history.length - 1] = candleData;
-        } else {
-            history.push(candleData);
-        }
-
+        history.push(newCandle);
+        
         // الاحتفاظ بآخر 500 شمعة فقط
         if (history.length > 500) {
             history.shift();
         }
-
-        // تحديث البيانات
-        this.cryptoData.set(symbol, {
-            symbol: symbol,
-            price: candleData.close,
-            volume: candleData.volume,
-            priceChange: ((candleData.close - candleData.open) / candleData.open) * 100,
-            high24h: candleData.high,
-            low24h: candleData.low,
-            history: history
-        });
-    }
-
-    // تحسين حساب EMA
-    ema(data, period) {
-        if (!data || data.length < period) return 0;
         
-        const multiplier = 2 / (period + 1);
-        let ema = data[0];
+        this.cryptoData.set(symbol, newCandle);
         
-        for (let i = 1; i < data.length; i++) {
-            ema = (data[i] - ema) * multiplier + ema;
+        if (!this.isPaused) {
+            this.analyzeLuxAlgoBreaks();
         }
-        
-        return ema;
-    }
-
-    // تحسين Pivot High
-    getPivotHigh(data, idx, left = this.leftBars, right = this.rightBars) {
-        if (idx < left || idx >= data.length - right) return null;
-        
-        const currentHigh = data[idx].high;
-        
-        // التحقق من الجانب الأيسر
-        for (let i = idx - left; i < idx; i++) {
-            if (data[i].high >= currentHigh) return null;
-        }
-        
-        // التحقق من الجانب الأيمن
-        for (let i = idx + 1; i <= idx + right; i++) {
-            if (data[i].high >= currentHigh) return null;
-        }
-        
-        return currentHigh;
-    }
-
-    // تحسين Pivot Low
-    getPivotLow(data, idx, left = this.leftBars, right = this.rightBars) {
-        if (idx < left || idx >= data.length - right) return null;
-        
-        const currentLow = data[idx].low;
-        
-        // التحقق من الجانب الأيسر
-        for (let i = idx - left; i < idx; i++) {
-            if (data[i].low <= currentLow) return null;
-        }
-        
-        // التحقق من الجانب الأيمن
-        for (let i = idx + 1; i <= idx + right; i++) {
-            if (data[i].low <= currentLow) return null;
-        }
-        
-        return currentLow;
-    }
-
-    detectLuxAlgoBreaks(history) {
-        if (history.length < 100) return [];
-        
-        const signals = [];
-        const volumes = history.map(h => h.volume);
-        
-        // تحليل الشموع (باستثناء الشموع الأخيرة التي قد تكون غير مكتملة)
-        for (let i = this.leftBars; i < history.length - this.rightBars - 1; i++) {
-            const highPivot = this.getPivotHigh(history, i);
-            const lowPivot = this.getPivotLow(history, i);
-            
-            // التحقق من الاختراق في الشمعة التالية
-            const breakIdx = i + this.rightBars;
-            if (breakIdx >= history.length) continue;
-            
-            const breakBar = history[breakIdx];
-            
-            // حساب مؤشر الحجم
-            const recentVolumes = volumes.slice(Math.max(0, breakIdx - 20), breakIdx + 1);
-            const oscShort = this.ema(recentVolumes.slice(-5), 5);
-            const oscLong = this.ema(recentVolumes.slice(-10), 10);
-            const osc = oscLong > 0 ? 100 * (oscShort - oscLong) / oscLong : 0;
-            
-            // كسر المقاومة
-            if (highPivot && breakBar.close > highPivot && osc > this.volumeThresh) {
-                const bodySize = Math.abs(breakBar.close - breakBar.open);
-                const lowerWick = breakBar.open - breakBar.low;
-                
-                if (lowerWick <= bodySize) { // ليس Bull Wick
-                    signals.push({
-                        type: "BreakResistance",
-                        idx: breakIdx,
-                        price: breakBar.close,
-                        osc: osc,
-                        level: highPivot,
-                        timestamp: breakBar.timestamp
-                    });
-                } else {
-                    signals.push({
-                        type: "BullWick",
-                        idx: breakIdx,
-                        price: breakBar.close,
-                        level: highPivot,
-                        timestamp: breakBar.timestamp
-                    });
-                }
-            }
-            
-            // كسر الدعم
-            if (lowPivot && breakBar.close < lowPivot && osc > this.volumeThresh) {
-                const bodySize = Math.abs(breakBar.close - breakBar.open);
-                const upperWick = breakBar.high - breakBar.open;
-                
-                if (upperWick <= bodySize) { // ليس Bear Wick
-                    signals.push({
-                        type: "BreakSupport",
-                        idx: breakIdx,
-                        price: breakBar.close,
-                        osc: osc,
-                        level: lowPivot,
-                        timestamp: breakBar.timestamp
-                    });
-                } else {
-                    signals.push({
-                        type: "BearWick",
-                        idx: breakIdx,
-                        price: breakBar.close,
-                        level: lowPivot,
-                        timestamp: breakBar.timestamp
-                    });
-                }
-            }
-        }
-        
-        return signals;
     }
 
     analyzeLuxAlgoBreaks() {
-        const allSignals = [];
+        const signals = [];
         
-        this.cryptoData.forEach((data, symbol) => {
-            const history = data.history;
-            if (!history || history.length < 100) return;
+        for (const [symbol, history] of this.priceHistory) {
+            if (history.length < this.leftBars + this.rightBars + 1) continue;
             
-            const signals = this.detectLuxAlgoBreaks(history);
+            const pivotHighs = this.findPivotHighs(history);
+            const pivotLows = this.findPivotLows(history);
+            const latestCandle = history[history.length - 1];
             
-            // أخذ أحدث 3 إشارات فقط لكل رمز
-            const recentSignals = signals.slice(-3);
+            // فحص اختراق المقاومة
+            const resistance = this.findNearestResistance(pivotHighs, latestCandle.close);
+            if (resistance && latestCandle.close > resistance.price) {
+                const volumeCheck = this.checkVolumeThreshold(history);
+                if (volumeCheck) {
+                    signals.push({
+                        symbol: symbol.toUpperCase(),
+                        type: 'BreakResistance',
+                        price: latestCandle.close,
+                        resistance: resistance.price,
+                        volume: latestCandle.volume,
+                        time: latestCandle.time,
+                        change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2)
+                    });
+                }
+            }
             
-            recentSignals.forEach(sig => {
-                allSignals.push({
-                    symbol: symbol.replace('usdt', '').toUpperCase(),
-                    ...sig
+            // فحص كسر الدعم
+            const support = this.findNearestSupport(pivotLows, latestCandle.close);
+            if (support && latestCandle.close < support.price) {
+                const volumeCheck = this.checkVolumeThreshold(history);
+                if (volumeCheck) {
+                    signals.push({
+                        symbol: symbol.toUpperCase(),
+                        type: 'BreakSupport',
+                        price: latestCandle.close,
+                        support: support.price,
+                        volume: latestCandle.volume,
+                        time: latestCandle.time,
+                        change: ((support.price - latestCandle.close) / support.price * 100).toFixed(2)
+                    });
+                }
+            }
+            
+            // فحص الذيول الطويلة
+            const wickSignal = this.analyzeWicks(latestCandle);
+            if (wickSignal) {
+                signals.push({
+                    symbol: symbol.toUpperCase(),
+                    type: wickSignal.type,
+                    price: latestCandle.close,
+                    wickSize: wickSignal.size,
+                    time: latestCandle.time,
+                    ...wickSignal.data
                 });
-            });
-        });
+            }
+        }
         
-        // ترتيب الإشارات حسب الوقت
-        allSignals.sort((a, b) => b.timestamp - a.timestamp);
+        this.displayLuxAlgoSignals(signals);
+        this.updateLastUpdateTime();
+    }
+
+    findPivotHighs(history) {
+        const pivots = [];
         
-        this.displayLuxAlgoSignals(allSignals.slice(0, 20)); // عرض أحدث 20 إشارة
+        for (let i = this.leftBars; i < history.length - this.rightBars; i++) {
+            const current = history[i];
+            let isPivot = true;
+            
+            // فحص الأعمدة اليسرى
+            for (let j = i - this.leftBars; j < i; j++) {
+                if (history[j].high >= current.high) {
+                    isPivot = false;
+                    break;
+                }
+            }
+            
+            // فحص الأعمدة اليمنى
+            if (isPivot) {
+                for (let j = i + 1; j <= i + this.rightBars; j++) {
+                    if (history[j].high >= current.high) {
+                        isPivot = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (isPivot) {
+                pivots.push({ price: current.high, time: current.time, index: i });
+            }
+        }
+        
+        return pivots;
+    }
+
+    findPivotLows(history) {
+        const pivots = [];
+        
+        for (let i = this.leftBars; i < history.length - this.rightBars; i++) {
+            const current = history[i];
+            let isPivot = true;
+            
+            // فحص الأعمدة اليسرى
+            for (let j = i - this.leftBars; j < i; j++) {
+                if (history[j].low <= current.low) {
+                    isPivot = false;
+                    break;
+                }
+            }
+            
+            // فحص الأعمدة اليمنى
+            if (isPivot) {
+                for (let j = i + 1; j <= i + this.rightBars; j++) {
+                    if (history[j].low <= current.low) {
+                        isPivot = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (isPivot) {
+                pivots.push({ price: current.low, time: current.time, index: i });
+            }
+        }
+        
+        return pivots;
+    }
+
+    findNearestResistance(pivotHighs, currentPrice) {
+        let nearest = null;
+        let minDistance = Infinity;
+        
+        for (const pivot of pivotHighs) {
+            if (pivot.price > currentPrice) {
+                const distance = pivot.price - currentPrice;
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearest = pivot;
+                }
+            }
+        }
+        
+        return nearest;
+    }
+
+    findNearestSupport(pivotLows, currentPrice) {
+        let nearest = null;
+        let minDistance = Infinity;
+        
+        for (const pivot of pivotLows) {
+            if (pivot.price < currentPrice) {
+                const distance = currentPrice - pivot.price;
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearest = pivot;
+                }
+            }
+        }
+        
+        return nearest;
+    }
+
+    checkVolumeThreshold(history) {
+        if (history.length < 20) return false;
+        
+        const recent20 = history.slice(-20);
+        const avgVolume = recent20.reduce((sum, candle) => sum + candle.volume, 0) / 20;
+        const latestVolume = history[history.length - 1].volume;
+        
+        const volumeIncrease = ((latestVolume - avgVolume) / avgVolume) * 100;
+        
+        return volumeIncrease >= this.volumeThresh;
+    }
+
+    analyzeWicks(candle) {
+        const body = Math.abs(candle.close - candle.open);
+        const upperWick = candle.high - Math.max(candle.open, candle.close);
+        const lowerWick = Math.min(candle.open, candle.close) - candle.low;
+        const totalRange = candle.high - candle.low;
+        
+        if (totalRange === 0) return null;
+        
+        const upperWickPercent = (upperWick / totalRange) * 100;
+        const lowerWickPercent = (lowerWick / totalRange) * 100;
+        
+        if (lowerWickPercent > 60 && body / totalRange < 0.3) {
+            return {
+                type: 'BullWick',
+                size: lowerWickPercent.toFixed(1),
+                data: {
+                    bodySize: ((body / totalRange) * 100).toFixed(1),
+                    wickPercent: lowerWickPercent.toFixed(1)
+                }
+            };
+        }
+        
+        if (upperWickPercent > 60 && body / totalRange < 0.3) {
+            return {
+                type: 'BearWick',
+                size: upperWickPercent.toFixed(1),
+                data: {
+                    bodySize: ((body / totalRange) * 100).toFixed(1),
+                    wickPercent: upperWickPercent.toFixed(1)
+                }
+            };
+        }
+        
+        return null;
     }
 
     displayLuxAlgoSignals(signals) {
         const grid = document.getElementById('cryptoGrid');
         if (!grid) return;
 
-        if (signals.length === 0) {
-            grid.innerHTML = '<div class="no-data">🔍 جاري البحث عن إشارات...</div>';
+        // تطبيق المرشح
+        let filteredSignals = signals;
+        if (this.currentFilter !== 'all') {
+            filteredSignals = signals.filter(sig => sig.type === this.currentFilter);
+        }
+
+        // تحديث عداد الإشارات
+        const signalCount = document.getElementById('signalCount');
+        if (signalCount) {
+            signalCount.textContent = filteredSignals.length;
+        }
+
+        if (filteredSignals.length === 0) {
+            grid.innerHTML = '<div class="no-data">🔍 لا توجد إشارات مطابقة للمرشح المحدد</div>';
             return;
         }
 
-        const html = signals.map(sig => {
-            const timeAgo = this.getTimeAgo(sig.timestamp);
-            const signalClass = sig.type.toLowerCase().replace(/([A-Z])/g, '-$1');
-            
+        // ترتيب الإشارات حسب الوقت (الأحدث أولاً)
+        filteredSignals.sort((a, b) => b.time - a.time);
+
+        const html = filteredSignals.map(signal => {
+            const typeClass = signal.type.toLowerCase().replace(/([A-Z])/g, '-$1').substring(1);
             return `
-                <div class="crypto-card ${signalClass}">
+                <div class="crypto-card ${typeClass} new-signal">
                     <div class="crypto-header">
-                        <span class="crypto-symbol">${sig.symbol}/USDT</span>
-                        <span class="time-ago">${timeAgo}</span>
+                        <div class="crypto-symbol">${signal.symbol}</div>
+                        <div class="time-ago">${this.getTimeAgo(signal.time)}</div>
                     </div>
-                    <div class="signal-type">
-                        ${this.getSignalTypeText(sig.type)}
-                    </div>
+                    <div class="signal-type">${this.getSignalTypeText(signal.type)}</div>
                     <div class="signal-details">
-                        <div>المستوى: <strong>$${sig.level.toFixed(4)}</strong></div>
-                        <div>السعر: <strong>$${sig.price.toFixed(4)}</strong></div>
-                        ${sig.osc ? `<div>مؤشر الحجم: <strong>${sig.osc.toFixed(2)}%</strong></div>` : ''}
+                        <div><strong>السعر:</strong> <span>$${signal.price?.toFixed(4) || 'N/A'}</span></div>
+                        ${this.getSignalDetails(signal)}
                     </div>
                 </div>
             `;
         }).join('');
 
         grid.innerHTML = html;
-        this.updateLastUpdateTime();
     }
 
-       getSignalTypeText(type) {
+      getSignalDetails(signal) {
+        switch (signal.type) {
+            case 'BreakResistance':
+                return `
+                    <div><strong>مستوى المقاومة:</strong> <span>$${signal.resistance?.toFixed(4) || 'N/A'}</span></div>
+                    <div><strong>نسبة الاختراق:</strong> <span style="color: #28a745;">+${signal.change}%</span></div>
+                    <div><strong>الحجم:</strong> <span>${this.formatVolume(signal.volume)}</span></div>
+                `;
+            case 'BreakSupport':
+                return `
+                    <div><strong>مستوى الدعم:</strong> <span>$${signal.support?.toFixed(4) || 'N/A'}</span></div>
+                    <div><strong>نسبة الكسر:</strong> <span style="color: #dc3545;">-${signal.change}%</span></div>
+                    <div><strong>الحجم:</strong> <span>${this.formatVolume(signal.volume)}</span></div>
+                `;
+            case 'BullWick':
+                return `
+                    <div><strong>حجم الذيل:</strong> <span style="color: #ffc107;">${signal.wickSize}%</span></div>
+                    <div><strong>حجم الجسم:</strong> <span>${signal.bodySize}%</span></div>
+                    <div><strong>نوع الإشارة:</strong> <span>إشارة صعود محتملة</span></div>
+                `;
+            case 'BearWick':
+                return `
+                    <div><strong>حجم الذيل:</strong> <span style="color: #6f42c1;">${signal.wickSize}%</span></div>
+                    <div><strong>حجم الجسم:</strong> <span>${signal.bodySize}%</span></div>
+                    <div><strong>نوع الإشارة:</strong> <span>إشارة هبوط محتملة</span></div>
+                `;
+            default:
+                return '<div>تفاصيل غير متوفرة</div>';
+        }
+    }
+
+    formatVolume(volume) {
+        if (!volume) return 'N/A';
+        
+        if (volume >= 1000000000) {
+            return (volume / 1000000000).toFixed(2) + 'B';
+        } else if (volume >= 1000000) {
+            return (volume / 1000000).toFixed(2) + 'M';
+        } else if (volume >= 1000) {
+            return (volume / 1000).toFixed(2) + 'K';
+        }
+        return volume.toFixed(2);
+    }
+
+    getSignalTypeText(type) {
         const types = {
             'BreakResistance': '🚀 اختراق مقاومة',
-            'BreakSupport': '📉 كسر دعم', 
+            'BreakSupport': '📉 كسر دعم',
             'BullWick': '🕯️ شمعة ذيل صاعد',
             'BearWick': '🕯️ شمعة ذيل هابط'
         };
@@ -458,6 +447,33 @@ displayLuxAlgoSignals(signals) {
             });
         }
 
+        // زر الإيقاف المؤقت
+        const pauseBtn = document.getElementById('pauseBtn');
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', () => {
+                this.togglePause();
+            });
+        }
+
+        // زر إعادة التعيين
+        const resetBtn = document.getElementById('resetBtn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.resetData();
+            });
+        }
+
+        // أزرار المرشح
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.setFilter(e.target.dataset.filter);
+                
+                // تحديث الواجهة
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+            });
+        });
+
         // إضافة مستمع لتغيير الإعدادات
         const leftBarsInput = document.getElementById('leftBars');
         const rightBarsInput = document.getElementById('rightBars');
@@ -485,10 +501,53 @@ displayLuxAlgoSignals(signals) {
         }
     }
 
+    // وظيفة الإيقاف المؤقت
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        const pauseBtn = document.getElementById('pauseBtn');
+        
+        if (this.isPaused) {
+            pauseBtn.textContent = '▶️ استئناف';
+            pauseBtn.classList.add('paused');
+            if (this.updateInterval) {
+                clearInterval(this.updateInterval);
+            }
+        } else {
+            pauseBtn.textContent = '⏸️ إيقاف مؤقت';
+            pauseBtn.classList.remove('paused');
+            this.startPeriodicUpdate();
+        }
+    }
+
+    // وظيفة إعادة التعيين
+    resetData() {
+        this.cryptoData.clear();
+        this.priceHistory.clear();
+        
+        const grid = document.getElementById('cryptoGrid');
+        if (grid) {
+            grid.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>جاري إعادة تحميل البيانات...</p></div>';
+        }
+        
+        // إعادة الاتصال
+        if (this.ws) {
+            this.ws.close();
+        }
+        setTimeout(() => this.connectWebSocket(), 1000);
+    }
+
+    // وظيفة المرشح
+    setFilter(filter) {
+        this.currentFilter = filter;
+        this.analyzeLuxAlgoBreaks();
+    }
+
     startPeriodicUpdate() {
         // تحليل كل دقيقة
         this.updateInterval = setInterval(() => {
-            this.analyzeLuxAlgoBreaks();
+            if (!this.isPaused) {
+                this.analyzeLuxAlgoBreaks();
+            }
         }, 60000);
     }
 
@@ -513,9 +572,9 @@ displayLuxAlgoSignals(signals) {
         const statsElement = document.getElementById('stats');
         if (statsElement) {
             statsElement.innerHTML = `
-                <div>الرموز المتصلة: ${stats.connectedSymbols}</div>
-                <div>إجمالي الشموع: ${stats.totalCandles}</div>
-                <div>متوسط الشموع لكل رمز: ${stats.avgCandlesPerSymbol}</div>
+                <div>الرموز المتصلة: <span class="stat-value">${stats.connectedSymbols}</span></div>
+                <div>إجمالي الشموع: <span class="stat-value">${stats.totalCandles}</span></div>
+                <div>متوسط الشموع لكل رمز: <span class="stat-value">${stats.avgCandlesPerSymbol}</span></div>
             `;
         }
     }
