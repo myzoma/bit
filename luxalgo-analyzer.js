@@ -17,6 +17,72 @@ class LuxAlgoBreakoutAnalyzer {
         this.setupEventListeners();
         this.startPeriodicUpdate();
     }
+async fetchHistoricalData(symbol) {
+    const proxies = [
+        'https://corsproxy.io/?',
+        'https://cors-anywhere.herokuapp.com/',
+        'https://api.codetabs.com/v1/proxy?quest=',
+        'https://thingproxy.freeboard.io/fetch/'
+    ];
+    
+    const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
+    
+    for (let i = 0; i < proxies.length; i++) {
+        try {
+            console.log(`🔄 محاولة جلب ${symbol} باستخدام proxy ${i + 1}`);
+            
+            let response;
+            if (proxies[i].includes('codetabs')) {
+                response = await fetch(proxies[i] + encodeURIComponent(apiUrl));
+            } else {
+                response = await fetch(proxies[i] + apiUrl);
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            let data = await response.text();
+            
+            // محاولة تحويل النص إلى JSON
+            try {
+                data = JSON.parse(data);
+            } catch (e) {
+                // إذا كان النص يحتوي على JSON محاط بنص آخر
+                const jsonMatch = data.match(/\[.*\]/s);
+                if (jsonMatch) {
+                    data = JSON.parse(jsonMatch[0]);
+                } else {
+                    throw new Error('Invalid JSON format');
+                }
+            }
+            
+            if (!Array.isArray(data)) {
+                throw new Error('Data is not an array');
+            }
+            
+            const candles = data.map(k => ({
+                time: k[0],
+                open: parseFloat(k[1]),
+                high: parseFloat(k[2]),
+                low: parseFloat(k[3]),
+                close: parseFloat(k[4]),
+                volume: parseFloat(k[5])
+            }));
+            
+            this.priceHistory.set(symbol, candles);
+            console.log(`✅ تم جلب ${candles.length} شمعة للرمز ${symbol}`);
+            return;
+            
+        } catch (error) {
+            console.warn(`❌ فشل proxy ${i + 1} لـ ${symbol}:`, error.message);
+            continue;
+        }
+    }
+    
+    console.error(`❌ فشل جلب البيانات التاريخية لـ ${symbol} من جميع المصادر`);
+    this.priceHistory.set(symbol, []);
+}
 
     connectWebSocket() {
         const symbols = ['btcusdt', 'ethusdt', 'adausdt', 'bnbusdt', 'xrpusdt', 'solusdt', 'dogeusdt', 'avaxusdt', 'linkusdt', 'maticusdt'];
