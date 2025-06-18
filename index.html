@@ -3,26 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مراقب الاختراقات الصعودية</title>
+    <title>مراقب الاختراقات الصعودية - LuxAlgo</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>مراقب الاختراقات الصعودية للعملات المشفرة</h1>
-            <div class="status" id="connectionStatus">جاري الاتصال...</div>
+            <h1>🚀 مراقب الاختراقات الصعودية للعملات المشفرة</h1>
+            <div class="header-info">
+                <div class="status" id="connectionStatus">جاري الاتصال...</div>
+                <div class="last-update">آخر تحديث: <span id="lastUpdate">-</span></div>
+            </div>
         </header>
-        
-        <div class="controls">
-            <button id="refreshBtn">تحديث البيانات</button>
-            <div class="last-update">آخر تحديث: <span id="lastUpdate">-</span></div>
+
+        <!-- قسم الإعدادات -->
+        <div class="settings-panel">
+            <h3>⚙️ إعدادات التحليل</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label for="leftBars">الأعمدة اليسرى:</label>
+                    <input type="number" id="leftBars" value="15" min="5" max="50">
+                </div>
+                <div class="setting-item">
+                    <label for="rightBars">الأعمدة اليمنى:</label>
+                    <input type="number" id="rightBars" value="15" min="5" max="50">
+                </div>
+                <div class="setting-item">
+                    <label for="volumeThresh">حد مؤشر الحجم:</label>
+                    <input type="number" id="volumeThresh" value="20" min="0" max="100" step="5">
+                </div>
+            </div>
         </div>
 
-        <div class="grid-container" id="cryptoGrid">
-            <div class="loading">جاري تحميل البيانات...</div>
+        <!-- قسم الإحصائيات -->
+        <div class="stats-panel">
+            <h3>📊 إحصائيات النظام</h3>
+            <div class="stats-grid" id="stats">
+                <div>الرموز المتصلة: <span class="stat-value">0</span></div>
+                <div>إجمالي الشموع: <span class="stat-value">0</span></div>
+                <div>متوسط الشموع لكل رمز: <span class="stat-value">0</span></div>
+            </div>
+        </div>
+
+        <!-- أزرار التحكم -->
+        <div class="controls">
+            <button id="refreshBtn" class="btn-primary">🔄 تحديث البيانات</button>
+            <button id="pauseBtn" class="btn-secondary">⏸️ إيقاف مؤقت</button>
+            <button id="resetBtn" class="btn-danger">🔄 إعادة تعيين</button>
+        </div>
+
+        <!-- مرشح الإشارات -->
+        <div class="filter-panel">
+            <h3>🎯 مرشح الإشارات</h3>
+            <div class="filter-buttons">
+                <button class="filter-btn active" data-filter="all">جميع الإشارات</button>
+                <button class="filter-btn" data-filter="BreakResistance">🚀 اختراق مقاومة</button>
+                <button class="filter-btn" data-filter="BreakSupport">📉 كسر دعم</button>
+                <button class="filter-btn" data-filter="BullWick">🕯️ شمعة صاعدة</button>
+                <button class="filter-btn" data-filter="BearWick">🕯️ شمعة هابطة</button>
+            </div>
+        </div>
+
+        <!-- منطقة عرض الإشارات -->
+        <div class="signals-section">
+            <div class="section-header">
+                <h2>🎯 الإشارات الحالية</h2>
+                <div class="signal-count">
+                    عدد الإشارات: <span id="signalCount">0</span>
+                </div>
+            </div>
+            
+            <div class="grid-container" id="cryptoGrid">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>جاري تحميل البيانات...</p>
+                    <small>قد يستغرق الأمر بضع ثوان</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- قسم المساعدة -->
+        <div class="help-panel">
+            <h3>❓ دليل الإشارات</h3>
+            <div class="help-grid">
+                <div class="help-item break-resistance">
+                    <span class="help-icon">🚀</span>
+                    <div>
+                        <strong>اختراق مقاومة</strong>
+                        <p>السعر يخترق مستوى مقاومة مهم بحجم تداول عالي</p>
+                    </div>
+                </div>
+                <div class="help-item break-support">
+                    <span class="help-icon">📉</span>
+                    <div>
+                        <strong>كسر دعم</strong>
+                        <p>السعر يكسر مستوى دعم مهم بحجم تداول عالي</p>
+                    </div>
+                </div>
+                <div class="help-item bull-wick">
+                    <span class="help-icon">🕯️</span>
+                    <div>
+                        <strong>شمعة ذيل صاعد</strong>
+                        <p>شمعة بذيل سفلي طويل تشير لضغط شراء</p>
+                    </div>
+                </div>
+                <div class="help-item bear-wick">
+                    <span class="help-icon">🕯️</span>
+                    <div>
+                        <strong>شمعة ذيل هابط</strong>
+                        <p>شمعة بذيل علوي طويل تشير لضغط بيع</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <script src="breakout-analyzer.js"></script>
+    <script src="luxalgo-analyzer.js"></script>
 </body>
 </html>
