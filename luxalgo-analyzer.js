@@ -7,6 +7,95 @@ class LuxAlgoBreakoutAnalyzer {
         this.rightBars = 15;
         this.volumeThresh = 20;
         this.updateInterval = null;
+          this.isPaused = false;
+    this.currentFilter = 'all';
+        setupEventListeners() {
+             const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            this.togglePause();
+        });
+    }
+             const resetBtn = document.getElementById('resetBtn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            this.resetData();
+        });
+    }
+               document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            this.setFilter(e.target.dataset.filter);
+            
+            // تحديث الواجهة
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+        });
+    });
+}
+
+// وظيفة الإيقاف المؤقت
+togglePause() {
+    this.isPaused = !this.isPaused;
+    const pauseBtn = document.getElementById('pauseBtn');
+    
+    if (this.isPaused) {
+        pauseBtn.textContent = '▶️ استئناف';
+        pauseBtn.classList.add('paused');
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+    } else {
+        pauseBtn.textContent = '⏸️ إيقاف مؤقت';
+        pauseBtn.classList.remove('paused');
+        this.startPeriodicUpdate();
+    }
+}
+
+// وظيفة إعادة التعيين
+resetData() {
+    this.cryptoData.clear();
+    this.priceHistory.clear();
+    
+    const grid = document.getElementById('cryptoGrid');
+    if (grid) {
+        grid.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>جاري إعادة تحميل البيانات...</p></div>';
+    }
+    
+    // إعادة الاتصال
+    if (this.ws) {
+        this.ws.close();
+    }
+    setTimeout(() => this.connectWebSocket(), 1000);
+}
+
+// وظيفة المرشح
+setFilter(filter) {
+    this.currentFilter = filter;
+    this.analyzeLuxAlgoBreaks();
+}
+
+// تحديث displayLuxAlgoSignals لتطبيق المرشح
+displayLuxAlgoSignals(signals) {
+    const grid = document.getElementById('cryptoGrid');
+    if (!grid) return;
+
+    // تطبيق المرشح
+    let filteredSignals = signals;
+    if (this.currentFilter !== 'all') {
+        filteredSignals = signals.filter(sig => sig.type === this.currentFilter);
+    }
+
+    // تحديث عداد الإشارات
+    const signalCount = document.getElementById('signalCount');
+    if (signalCount) {
+        signalCount.textContent = filteredSignals.length;
+    }
+
+    if (filteredSignals.length === 0) {
+        grid.innerHTML = '<div class="no-data">🔍 لا توجد إشارات مطابقة للمرشح المحدد</div>';
+        return;
+    }
+
         this.init();
     }
 
