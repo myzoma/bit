@@ -1,4 +1,4 @@
-class BreakoutAnalyzer {
+class LuxAlgoBreakoutAnalyzer {
     constructor() {
         this.ws = null;
         this.cryptoData = new Map();
@@ -7,7 +7,6 @@ class BreakoutAnalyzer {
         this.rightBars = 15;
         this.volumeThresh = 20;
         this.updateInterval = null;
-        
         this.init();
     }
 
@@ -24,7 +23,6 @@ class BreakoutAnalyzer {
             'ltcusdt', 'bchusdt', 'xlmusdt', 'vetusdt', 'filusdt',
             'trxusdt', 'etcusdt', 'xmrusdt', 'algousdt', 'atomusdt'
         ];
-
         const streams = symbols.map(symbol => `${symbol}@ticker`).join('/');
         this.ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
 
@@ -32,17 +30,14 @@ class BreakoutAnalyzer {
             this.updateConnectionStatus('متصل', 'connected');
             console.log('WebSocket connected');
         };
-
         this.ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             this.processTicker(data);
         };
-
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
             this.updateConnectionStatus('خطأ في الاتصال', 'error');
         };
-
         this.ws.onclose = () => {
             this.updateConnectionStatus('منقطع', 'error');
             setTimeout(() => this.connectWebSocket(), 5000);
@@ -56,24 +51,26 @@ class BreakoutAnalyzer {
         const priceChange = parseFloat(ticker.P);
         const high24h = parseFloat(ticker.h);
         const low24h = parseFloat(ticker.l);
+        const open = parseFloat(ticker.o);
 
         if (!this.priceHistory.has(symbol)) {
             this.priceHistory.set(symbol, []);
         }
-
         const history = this.priceHistory.get(symbol);
+
+        // Binance Ticker لا يحتوي على high/low لكل شمعة؛ سنقدرها من 24h أو نعيد استخدام آخر قيم:
+        const last = history.length ? history[history.length - 1] : {};
         history.push({
-            price: price,
-            volume: volume,
+            open: last.close || open,
             high: high24h,
             low: low24h,
+            close: price,
+            volume: volume,
             timestamp: Date.now()
         });
-
-        if (history.length > 100) {
+        if (history.length > 200) {
             history.shift();
         }
-
         this.cryptoData.set(symbol, {
             symbol: symbol,
             price: price,
@@ -84,181 +81,161 @@ class BreakoutAnalyzer {
             history: history
         });
 
-        this.analyzeBreakouts();
+        this.analyzeLuxAlgoBreaks();
     }
 
-    calculatePivotHigh(data, index) {
-        if (index < this.leftBars || index >= data.length - this.rightBars) {
-            return null;
-        }
-
-        const currentHigh = data[index].high;
-        
-        for (let i = index - this.leftBars; i < index + this.rightBars; i++) {
-            if (i !== index && data[i].high >= currentHigh) {
-                return null;
-            }
-        }
-        
-        return currentHigh;
-    }
-
-    calculateVolumeOscillator(history) {
-        if (history.length < 10) return 0;
-
-        const volumes = history.slice(-10).map(h => h.volume);
-        const short = this.ema(volumes.slice(-5), 5);
-        const long = this.ema(volumes, 10);
-        
-        return long > 0 ? 100 * (short - long) / long : 0;
-    }
-
+    // EMA Function
     ema(data, period) {
-        if (data.length === 0) return 0;
-        
+        if (data.length < period) return 0;
         const multiplier = 2 / (period + 1);
-        let ema = data[0];
-        
-        for (let i = 1; i < data.length; i++) {
-            ema = (data[i] * multiplier) + (ema * (1 - multiplier));
+        let ema = data[data.length - period];
+        for (let i = data.length - period + 1; i < data.length; i++) {
+            ema = (data[i] - ema) * multiplier + ema;
         }
-        
         return ema;
     }
 
-    analyzeBreakouts() {
-        const breakouts = [];
+    // Pivot High
+    getPivotHigh(data, idx, left = this.leftBars, right = this.rightBars) {
+        if (idx < left || idx > data.length - right - 1) return null;
+        const curr = data[idx].high;
+        for (let i = idx - left; i <= idx + right; i++) {
+            if (i !== idx && data[i].high >= curr) return null;
+        }
+        return curr;
+    }
 
+    // Pivot Low
+    getPivotLow(data, idx, left = this.leftBars, right = this.rightBars) {
+        if (idx < left || idx > data.length - right - 1) return null;
+        const curr = data[idx].low;
+        for (let i = idx - left; i <= idx + right; i++) {
+            if (i !== idx && data[i].low <= curr) return null;
+        }
+        return curr;
+    }
+
+    detectLuxAlgoBreaks(history) {
+        const signals = [];
+        const volumes = history.map(h => h.volume);
+        for (let i = this.leftBars; i < history.length - this.rightBars; i++) {
+            const highPivot = this.getPivotHigh(history, i);
+            const lowPivot = this.getPivotLow(history, i);
+
+            const idx = i + 1;
+            if (idx >= history.length) break;
+
+            const bar = history[idx];
+            const oscShort = this.ema(volumes.slice(0, idx + 1), 5);
+            const oscLong = this.ema(volumes.slice(0, idx + 1), 10);
+            const osc = oscLong > 0 ? 100 * (oscShort - oscLong) / oscLong : 0;
+
+            // Break Resistance (green)
+            if (
+                highPivot !== null &&
+                bar.close > highPivot &&
+                !(bar.open - bar.low > bar.close - bar.open) &&
+                osc > this.volumeThresh
+            ) {
+                signals.push({ type: "BreakResistance", idx, price: bar.close, osc, level: highPivot });
+            }
+            // Break Support (red)
+            if (
+                lowPivot !== null &&
+                bar.close < lowPivot &&
+                !(bar.open - bar.close < bar.high - bar.open) &&
+                osc > this.volumeThresh
+            ) {
+                signals.push({ type: "BreakSupport", idx, price: bar.close, osc, level: lowPivot });
+            }
+            // Bull Wick
+            if (
+                highPivot !== null &&
+                bar.close > highPivot &&
+                (bar.open - bar.low > bar.close - bar.open)
+            ) {
+                signals.push({ type: "BullWick", idx, price: bar.close, level: highPivot });
+            }
+            // Bear Wick
+            if (
+                lowPivot !== null &&
+                bar.close < lowPivot &&
+                (bar.open - bar.close < bar.high - bar.open)
+            ) {
+                signals.push({ type: "BearWick", idx, price: bar.close, level: lowPivot });
+            }
+        }
+        return signals;
+    }
+
+    analyzeLuxAlgoBreaks() {
+        const allSignals = [];
         this.cryptoData.forEach((data, symbol) => {
             const history = data.history;
             if (history.length < 50) return;
-
-            const resistanceLevels = this.findResistanceLevels(history);
-            const volumeOsc = this.calculateVolumeOscillator(history);
-            const currentPrice = data.price;
-
-            resistanceLevels.forEach(resistance => {
-                if (currentPrice > resistance && volumeOsc > this.volumeThresh) {
-                    const nextTargets = this.calculateTargets(resistance, resistanceLevels);
-                    
-                    breakouts.push({
-                        symbol: symbol.replace('USDT', ''),
-                        price: currentPrice,
-                        breakoutLevel: resistance,
-                        targets: nextTargets,
-                        volume: data.volume,
-                        volumeOsc: volumeOsc,
-                        priceChange: data.priceChange,
-                        liquidity: this.calculateLiquidity(data)
-                    });
-                }
+            const signals = this.detectLuxAlgoBreaks(history);
+            signals.forEach(sig => {
+                allSignals.push({
+                    symbol: symbol.replace('USDT', ''),
+                    ...sig
+                });
             });
         });
-
-        this.displayBreakouts(breakouts);
+        this.displayLuxAlgoSignals(allSignals);
     }
 
-    findResistanceLevels(history) {
-        const levels = [];
-        
-        for (let i = this.leftBars; i < history.length - this.rightBars; i++) {
-            const pivotHigh = this.calculatePivotHigh(history, i);
-            if (pivotHigh) {
-                levels.push(pivotHigh);
-            }
-        }
-        
-        return levels.sort((a, b) => a - b);
-    }
-
-    calculateTargets(breakoutLevel, allLevels) {
-        return allLevels
-            .filter(level => level > breakoutLevel)
-            .slice(0, 3)
-            .map(level => level.toFixed(4));
-    }
-
-    calculateLiquidity(data) {
-        return (data.volume * data.price / 1000000).toFixed(2);
-    }
-
-    displayBreakouts(breakouts) {
+    displayLuxAlgoSignals(signals) {
         const grid = document.getElementById('cryptoGrid');
-        
-        if (breakouts.length === 0) {
-            grid.innerHTML = '<div class="no-data">لا توجد اختراقات صعودية حالياً</div>';
+        if (!grid) return;
+        if (signals.length === 0) {
+            grid.innerHTML = '<div class="no-data">لا يوجد اختراقات/كسور حالياً</div>';
             return;
         }
-
-        const html = breakouts.map(breakout => `
-            <div class="crypto-card">
-                <div class="card-header">
-                    <div class="crypto-name">${breakout.symbol}/USDT</div>
-                    <div class="price-change positive">+${breakout.priceChange.toFixed(2)}%</div>
+        const html = signals.map(sig => `
+            <div class="crypto-card ${sig.type}">
+                <div><b>${sig.symbol}/USDT</b></div>
+                <div>
+                    ${
+                        sig.type === "BreakResistance" ? 'اختراق مقاومة ⬆️'
+                        : sig.type === "BreakSupport" ? 'كسر دعم ⬇️'
+                        : sig.type === "BullWick" ? 'شمعة ذيل صاعد (Bull Wick)'
+                        : sig.type === "BearWick" ? 'شمعة ذيل هابط (Bear Wick)' : ''
+                    } عند مستوى <b>${sig.level.toFixed(4)}</b>
                 </div>
-                <div class="card-body">
-                    <div class="info-row">
-                        <span class="info-label">السعر الحالي</span>
-                        <span class="info-value">$${breakout.price.toFixed(4)}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">مستوى الاختراق</span>
-                        <span class="info-value breakout-level">$${breakout.breakoutLevel.toFixed(4)}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">الأهداف التالية</span>
-                        <span class="info-value targets">${breakout.targets.length > 0 ? breakout.targets.join(' | ') : 'غير محدد'}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">الحجم (24س)</span>
-                        <span class="info-value volume-info">${this.formatVolume(breakout.volume)}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">السيولة</span>
-                        <span class="info-value volume-info">$${breakout.liquidity}M</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">مؤشر الحجم</span>
-                        <span class="info-value volume-info">${breakout.volumeOsc.toFixed(2)}%</span>
-                    </div>
-                </div>
+                <div>السعر: $${sig.price.toFixed(4)}, مؤشر الحجم: ${sig.osc ? sig.osc.toFixed(2) : ''}%</div>
             </div>
         `).join('');
-
         grid.innerHTML = html;
         this.updateLastUpdateTime();
     }
 
-    formatVolume(volume) {
-        if (volume >= 1000000) {
-            return (volume / 1000000).toFixed(2) + 'M';
-        } else if (volume >= 1000) {
-            return (volume / 1000).toFixed(2) + 'K';
-        }
-        return volume.toFixed(2);
-    }
-
     updateConnectionStatus(status, className) {
         const statusElement = document.getElementById('connectionStatus');
-        statusElement.textContent = status;
-        statusElement.className = `status ${className}`;
+        if (statusElement) {
+            statusElement.textContent = status;
+            statusElement.className = `status ${className}`;
+        }
     }
 
     updateLastUpdateTime() {
         const now = new Date();
         const timeString = now.toLocaleTimeString('ar-SA');
-        document.getElementById('lastUpdate').textContent = timeString;
+        const lastUpdate = document.getElementById('lastUpdate');
+        if (lastUpdate) lastUpdate.textContent = timeString;
     }
 
     setupEventListeners() {
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-            this.analyzeBreakouts();
-        });
+        const btn = document.getElementById('refreshBtn');
+        if (btn) {
+            btn.addEventListener('click', () => {
+                this.analyzeLuxAlgoBreaks();
+            });
+        }
     }
 
     startPeriodicUpdate() {
         this.updateInterval = setInterval(() => {
-            this.analyzeBreakouts();
+            this.analyzeLuxAlgoBreaks();
         }, 30000); // تحديث كل 30 ثانية
     }
 
@@ -274,9 +251,7 @@ class BreakoutAnalyzer {
 
 // تشغيل التطبيق عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', () => {
-    const analyzer = new BreakoutAnalyzer();
-    
-    // تنظيف الموارد عند إغلاق الصفحة
+    const analyzer = new LuxAlgoBreakoutAnalyzer();
     window.addEventListener('beforeunload', () => {
         analyzer.destroy();
     });
