@@ -5,6 +5,9 @@ class SupportResistanceAnalyzer {
         this.volumeThreshold = 20;
         this.changeThreshold = 2;
         this.cryptoData = [];
+        this.binanceBaseUrl = 'https://api1.binance.com/api/v3';
+        this.updateInterval = 15 * 60 * 1000; // 15 دقيقة
+        this.maxResults = 10; // أفضل 10 عملات فقط
         this.init();
     }
 
@@ -12,10 +15,10 @@ class SupportResistanceAnalyzer {
         this.bindEvents();
         this.loadCryptoData();
         
-        // تحديث تلقائي كل 30 ثانية
+        // تحديث تلقائي كل 15 دقيقة
         setInterval(() => {
             this.loadCryptoData();
-        }, 30000);
+        }, this.updateInterval);
     }
 
     bindEvents() {
@@ -34,77 +37,163 @@ class SupportResistanceAnalyzer {
         });
     }
 
-    // محاكاة بيانات العملات المشفرة
+    // جلب قائمة العملات النشطة من Binance
+    async fetchTradingPairs() {
+        try {
+            const response = await fetch(`${this.binanceBaseUrl}/exchangeInfo`);
+            const data = await response.json();
+            
+            // فلترة العملات المقترنة بـ USDT والنشطة فقط
+            const usdtPairs = data.symbols
+                .filter(symbol => 
+                    symbol.symbol.endsWith('USDT') && 
+                    symbol.status === 'TRADING' &&
+                    !symbol.symbol.includes('UP') &&
+                    !symbol.symbol.includes('DOWN') &&
+                    !symbol.symbol.includes('BULL') &&
+                    !symbol.symbol.includes('BEAR')
+                )
+                .map(symbol => symbol.symbol)
+                .slice(0, 50); // أخذ أول 50 عملة للتحليل
+            
+            return usdtPairs;
+        } catch (error) {
+            console.error('خطأ في جلب أزواج التداول:', error);
+            return [];
+        }
+    }
+
+    // جلب بيانات السعر الحالي والتغيير 24 ساعة
+    async fetch24hrStats() {
+        try {
+            const response = await fetch(`${this.binanceBaseUrl}/ticker/24hr`);
+            const data = await response.json();
+            
+            // فلترة العملات المقترنة بـ USDT فقط
+            return data.filter(ticker => ticker.symbol.endsWith('USDT'));
+        } catch (error) {
+            console.error('خطأ في جلب إحصائيات 24 ساعة:', error);
+            return [];
+        }
+    }
+
+    // جلب بيانات الشموع اليابانية
+    async fetchKlineData(symbol, interval = '1h', limit = 100) {
+        try {
+            const response = await fetch(
+                `${this.binanceBaseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+            );
+            const data = await response.json();
+            
+            return data.map(kline => ({
+                timestamp: kline[0],
+                open: parseFloat(kline[1]),
+                high: parseFloat(kline[2]),
+                low: parseFloat(kline[3]),
+                close: parseFloat(kline[4]),
+                volume: parseFloat(kline[5])
+            }));
+        } catch (error) {
+            console.error(`خطأ في جلب بيانات الشموع لـ ${symbol}:`, error);
+            return [];
+        }
+    }
+
+    // جلب بيانات عمق السوق للسيولة
+    async fetchOrderBookDepth(symbol) {
+        try {
+            const response = await fetch(
+                `${this.binanceBaseUrl}/depth?symbol=${symbol}&limit=100`
+            );
+            const data = await response.json();
+            
+            // حساب السيولة من عمق السوق
+            const bidLiquidity = data.bids.reduce((sum, bid) => 
+                sum + (parseFloat(bid[0]) * parseFloat(bid[1])), 0
+            );
+            const askLiquidity = data.asks.reduce((sum, ask) => 
+                sum + (parseFloat(ask[0]) * parseFloat(ask[1])), 0
+            );
+            
+            return bidLiquidity + askLiquidity;
+        } catch (error) {
+            console.error(`خطأ في جلب عمق السوق لـ ${symbol}:`, error);
+            return 0;
+        }
+    }
+
+    // تحميل البيانات الحقيقية من Binance
     async loadCryptoData() {
         this.showLoading(true);
         
         try {
-            // في التطبيق الحقيقي، ستستخدم API حقيقي مثل Binance أو CoinGecko
-            this.cryptoData = await this.generateMockData();
+            console.log('جاري تحميل البيانات من Binance...');
+            
+            // جلب إحصائيات 24 ساعة لجميع العملات
+            const stats24hr = await this.fetch24hrStats();
+            
+            // فلترة العملات بناءً على الحجم والتغيير
+            const filteredStats = stats24hr
+                .filter(stat => {
+                    const change = parseFloat(stat.priceChangePercent);
+                    const volume = parseFloat(stat.volume);
+                    return change > this.changeThreshold && volume > 1000;
+                })
+                .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
+                .slice(0, 30); // أخذ أفضل 30 عملة للتحليل التفصيلي
+
+            console.log(`تم العثور على ${filteredStats.length} عملة مرشحة للتحليل`);
+
+            // تحليل كل عملة بالتفصيل
+            const cryptoPromises = filteredStats.map(async (stat) => {
+                try {
+                    const symbol = stat.symbol;
+                    const klineData = await this.fetchKlineData(symbol);
+                    
+                    if (klineData.length < 50) return null;
+
+                    const liquidity = await this.fetchOrderBookDepth(symbol);
+                    
+                    return {
+                        symbol: symbol.replace('USDT', '/USDT'),
+                        currentPrice: parseFloat(stat.lastPrice),
+                        priceHistory: klineData,
+                        volumeHistory: klineData.map(k => k.volume),
+                        volume24h: parseFloat(stat.volume),
+                        change24h: parseFloat(stat.priceChangePercent),
+                        liquidity: liquidity,
+                        marketCap: parseFloat(stat.lastPrice) * parseFloat(stat.volume), // تقدير تقريبي
+                        rawData: stat
+                    };
+                } catch (error) {
+                    console.error(`خطأ في معالجة ${stat.symbol}:`, error);
+                    return null;
+                }
+            });
+
+            // انتظار جميع الطلبات مع معالجة الأخطاء
+            const results = await Promise.allSettled(cryptoPromises);
+            this.cryptoData = results
+                .filter(result => result.status === 'fulfilled' && result.value !== null)
+                .map(result => result.value);
+
+            console.log(`تم تحليل ${this.cryptoData.length} عملة بنجاح`);
+
+            // تحليل الاختراقات
             this.analyzeBreakouts();
+            
+            // تحديث الإحصائيات
             this.updateStats();
+            
+            // عرض أفضل النتائج
             this.filterAndDisplayBreakouts();
+            
         } catch (error) {
             console.error('خطأ في تحميل البيانات:', error);
+            this.showError('فشل في تحميل البيانات من Binance. سيتم المحاولة مرة أخرى...');
         } finally {
             this.showLoading(false);
         }
-    }
-
-    async generateMockData() {
-        // محاكاة بيانات العملات مع أسعار وأحجام متغيرة
-        const cryptos = [
-            'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'SOL/USDT',
-            'XRP/USDT', 'DOT/USDT', 'DOGE/USDT', 'AVAX/USDT', 'LUNA/USDT',
-            'LINK/USDT', 'ATOM/USDT', 'LTC/USDT', 'UNI/USDT', 'ALGO/USDT',
-            'MATIC/USDT', 'FTT/USDT', 'ICP/USDT', 'VET/USDT', 'TRX/USDT'
-        ];
-
-        return cryptos.map(symbol => {
-            const basePrice = Math.random() * 1000 + 10;
-            const priceHistory = this.generatePriceHistory(basePrice, 50);
-            const volumeHistory = this.generateVolumeHistory(50);
-            
-            return {
-                symbol,
-                currentPrice: priceHistory[priceHistory.length - 1].close,
-                priceHistory,
-                volumeHistory,
-                volume24h: volumeHistory[volumeHistory.length - 1] * Math.random() * 1000000,
-                marketCap: basePrice * Math.random() * 1000000000,
-                change24h: (Math.random() - 0.5) * 20,
-                liquidity: Math.random() * 10000000
-            };
-        });
-    }
-
-    generatePriceHistory(basePrice, length) {
-        const history = [];
-        let currentPrice = basePrice;
-        
-        for (let i = 0; i < length; i++) {
-            const change = (Math.random() - 0.5) * 0.1;
-            currentPrice *= (1 + change);
-            
-            const high = currentPrice * (1 + Math.random() * 0.05);
-            const low = currentPrice * (1 - Math.random() * 0.05);
-            const open = i === 0 ? currentPrice : history[i-1].close;
-            
-            history.push({
-                open,
-                high,
-                low,
-                close: currentPrice,
-                timestamp: Date.now() - (length - i) * 3600000
-            });
-        }
-        
-        return history;
-    }
-
-    generateVolumeHistory(length) {
-        const baseVolume = Math.random() * 1000000;
-        return Array.from({length}, () => baseVolume * (0.5 + Math.random()));
     }
 
     // حساب نقاط الدعم والمقاومة
@@ -181,7 +270,6 @@ class SupportResistanceAnalyzer {
             const { pivotHighs, pivotLows } = this.calculatePivotPoints(crypto.priceHistory);
             const volumeOsc = this.calculateVolumeOscillator(crypto.volumeHistory);
             const currentPrice = crypto.currentPrice;
-            const lastCandle = crypto.priceHistory[crypto.priceHistory.length - 1];
             
             // العثور على أحدث مستويات المقاومة والدعم
             const latestResistance = pivotHighs.length > 0 ? 
@@ -189,14 +277,18 @@ class SupportResistanceAnalyzer {
             const latestSupport = pivotLows.length > 0 ? 
                 pivotLows[pivotLows.length - 1].price : null;
             
-            // فحص الاختراق الصعودي
+            // فحص الاختراق الصعودي مع شروط أكثر دقة
             const bullishBreakout = latestResistance && 
                 currentPrice > latestResistance && 
                 volumeOsc > this.volumeThreshold &&
-                Math.abs(crypto.change24h) > this.changeThreshold;
+                crypto.change24h > this.changeThreshold &&
+                crypto.volume24h > 100000; // حد أدنى للحجم
             
-            // حساب الأهداف (المقاومات التالية)
+            // حساب الأهداف
             const targets = this.calculateTargets(currentPrice, pivotHighs, latestResistance);
+            
+            // حساب قوة الاختراق
+            const breakoutStrength = this.calculateBreakoutStrength(crypto, volumeOsc, latestResistance);
             
             crypto.analysis = {
                 pivotHighs,
@@ -206,7 +298,7 @@ class SupportResistanceAnalyzer {
                 volumeOscillator: volumeOsc,
                 bullishBreakout,
                 targets,
-                breakoutStrength: this.calculateBreakoutStrength(crypto, volumeOsc)
+                breakoutStrength
             };
         });
     }
@@ -215,7 +307,10 @@ class SupportResistanceAnalyzer {
         const targets = [];
         
         // الهدف الأول: المقاومة التالية
-        const nextResistance = pivotHighs.find(pivot => pivot.price > currentPrice);
+        const nextResistance = pivotHighs
+            .filter(pivot => pivot.price > currentPrice)
+            .sort((a, b) => a.price - b.price)[0];
+            
         if (nextResistance) {
             targets.push({
                 level: nextResistance.price,
@@ -235,73 +330,91 @@ class SupportResistanceAnalyzer {
         }
         
         // الهدف الثالث: نسبة مئوية ثابتة
-        const percentTarget = currentPrice * 1.1; // 10% أعلى
+        const percentTarget = currentPrice * 1.05; // 5% أعلى
         targets.push({
             level: percentTarget,
-            type: 'هدف 10%',
-            distance: '10.00'
+            type: 'هدف 5%',
+            distance: '5.00'
         });
         
-        return targets.slice(0, 3); // أول 3 أهداف فقط
+        return targets.slice(0, 3);
     }
 
-    calculateBreakoutStrength(crypto, volumeOsc) {
+      calculateBreakoutStrength(crypto, volumeOsc, latestResistance) {
         let strength = 0;
         
-        // قوة الحجم (40%)
-        strength += Math.min(volumeOsc / 100, 0.4);
+        // قوة الحجم (30%)
+        const volumeStrength = Math.min(volumeOsc / 100, 0.3);
+        strength += Math.max(0, volumeStrength);
         
-        // قوة التغيير السعري (30%)
-        strength += Math.min(Math.abs(crypto.change24h) / 50, 0.3);
+        // قوة التغيير السعري (25%)
+        const changeStrength = Math.min(crypto.change24h / 20, 0.25);
+        strength += Math.max(0, changeStrength);
         
-        // السيولة (20%)
-        const liquidityScore = Math.min(crypto.liquidity / 10000000, 0.2);
-        strength += liquidityScore;
+        // قوة الاختراق (25%)
+        if (latestResistance) {
+            const breakoutPercent = ((crypto.currentPrice - latestResistance) / latestResistance) * 100;
+            const breakoutStrength = Math.min(breakoutPercent / 10, 0.25);
+            strength += Math.max(0, breakoutStrength);
+        }
         
-        // حجم التداول (10%)
-        const volumeScore = Math.min(crypto.volume24h / 100000000, 0.1);
-        strength += volumeScore;
+        // قوة السيولة (20%)
+        const liquidityStrength = Math.min(crypto.liquidity / 10000000, 0.2);
+        strength += Math.max(0, liquidityStrength);
         
         return Math.min(strength * 100, 100);
     }
 
+    // فلترة وعرض أفضل الاختراقات
     filterAndDisplayBreakouts() {
-        const breakouts = this.cryptoData.filter(crypto => 
-            crypto.analysis && crypto.analysis.bullishBreakout
-        );
-        
-        // ترتيب حسب قوة الاختراق
-        breakouts.sort((a, b) => b.analysis.breakoutStrength - a.analysis.breakoutStrength);
+        const breakouts = this.cryptoData
+            .filter(crypto => crypto.analysis && crypto.analysis.bullishBreakout)
+            .sort((a, b) => b.analysis.breakoutStrength - a.analysis.breakoutStrength)
+            .slice(0, this.maxResults); // أفضل 10 عملات فقط
+
+        console.log(`تم العثور على ${breakouts.length} اختراق صعودي`);
         
         this.displayBreakouts(breakouts);
-        document.getElementById('activeBreakouts').textContent = breakouts.length;
+        this.updateStats(breakouts.length);
     }
 
     displayBreakouts(breakouts) {
         const grid = document.getElementById('cryptoGrid');
-        const noResults = document.getElementById('noResults');
         
         if (breakouts.length === 0) {
-            grid.innerHTML = '';
-            noResults.style.display = 'block';
+            grid.innerHTML = `
+                <div class="no-results">
+                    <h3>🔍 لا توجد اختراقات صعودية حالياً</h3>
+                    <p>جاري البحث عن فرص جديدة...</p>
+                    <p>آخر تحديث: ${new Date().toLocaleTimeString('ar-SA')}</p>
+                </div>
+            `;
             return;
         }
-        
-        noResults.style.display = 'none';
-        
+
         grid.innerHTML = breakouts.map(crypto => this.createCryptoCard(crypto)).join('');
+        
+        // إضافة تأثير الظهور التدريجي
+        const cards = grid.querySelectorAll('.crypto-card');
+        cards.forEach((card, index) => {
+            card.style.animationDelay = `${index * 0.1}s`;
+            card.classList.add('fade-in');
+        });
     }
 
-        createCryptoCard(crypto) {
+    createCryptoCard(crypto) {
         const analysis = crypto.analysis;
         const strengthClass = this.getStrengthClass(analysis.breakoutStrength);
         const targetsHtml = analysis.targets.map(target => `
             <div class="target-item">
                 <span class="target-type">${target.type}</span>
-                <span class="target-price">$${target.level.toFixed(4)}</span>
+                <span class="target-price">$${parseFloat(target.level).toFixed(6)}</span>
                 <span class="target-distance">+${target.distance}%</span>
             </div>
         `).join('');
+
+        const breakoutDistance = analysis.latestResistance ? 
+            (((crypto.currentPrice - analysis.latestResistance) / analysis.latestResistance) * 100).toFixed(2) : '0.00';
 
         return `
             <div class="crypto-card ${strengthClass}">
@@ -331,11 +444,11 @@ class SupportResistanceAnalyzer {
                 <div class="resistance-info">
                     <div class="resistance-level">
                         <span class="level-label">مستوى الاختراق:</span>
-                        <span class="level-value">$${analysis.latestResistance.toFixed(6)}</span>
+                        <span class="level-value">$${analysis.latestResistance ? analysis.latestResistance.toFixed(6) : 'غير محدد'}</span>
                     </div>
                     <div class="breakout-distance">
                         <span class="distance-text">
-                            المسافة: ${(((crypto.currentPrice - analysis.latestResistance) / analysis.latestResistance) * 100).toFixed(2)}%
+                            المسافة: +${breakoutDistance}%
                         </span>
                     </div>
                 </div>
@@ -383,6 +496,10 @@ class SupportResistanceAnalyzer {
                         <button class="btn-small btn-alert" onclick="analyzer.setAlert('${crypto.symbol}')">
                             إنشاء تنبيه
                         </button>
+                        <a href="https://www.binance.com/en/trade/${crypto.symbol.replace('/', '_')}" 
+                           target="_blank" class="btn-small btn-trade">
+                            تداول
+                        </a>
                     </div>
                 </div>
             </div>
@@ -403,9 +520,13 @@ class SupportResistanceAnalyzer {
         return num.toFixed(2);
     }
 
-    updateStats() {
-        document.getElementById('totalCoins').textContent = this.cryptoData.length;
+    updateStats(breakoutCount = 0) {
+        document.getElementById('totalCoins').textContent = breakoutCount;
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
+        
+        // إضافة إحصائيات إضافية
+        const nextUpdate = new Date(Date.now() + this.updateInterval);
+        document.getElementById('nextUpdate').textContent = nextUpdate.toLocaleTimeString('ar-SA');
     }
 
     showLoading(show) {
@@ -419,6 +540,19 @@ class SupportResistanceAnalyzer {
             spinner.style.display = 'none';
             grid.style.opacity = '1';
         }
+    }
+
+    showError(message) {
+        const grid = document.getElementById('cryptoGrid');
+        grid.innerHTML = `
+            <div class="error-message">
+                <h3>⚠️ خطأ في التحميل</h3>
+                <p>${message}</p>
+                <button class="btn-primary" onclick="analyzer.loadCryptoData()">
+                    إعادة المحاولة
+                </button>
+            </div>
+        `;
     }
 
     // عرض تحليل مفصل
@@ -440,7 +574,7 @@ class SupportResistanceAnalyzer {
                             <div class="levels-grid">
                                 <div class="level-item resistance">
                                     <span class="level-label">آخر مقاومة:</span>
-                                    <span class="level-value">$${analysis.latestResistance.toFixed(6)}</span>
+                                    <span class="level-value">$${analysis.latestResistance ? analysis.latestResistance.toFixed(6) : 'غير محدد'}</span>
                                 </div>
                                 <div class="level-item support">
                                     <span class="level-label">آخر دعم:</span>
@@ -454,7 +588,33 @@ class SupportResistanceAnalyzer {
                             <div class="breakout-details">
                                 <p><strong>قوة الاختراق:</strong> ${analysis.breakoutStrength.toFixed(1)}%</p>
                                 <p><strong>مؤشر الحجم:</strong> ${analysis.volumeOscillator.toFixed(2)}%</p>
-                                <p><strong>نوع الاختراق:</strong> اختراق صعودي بحجم عالي</p>
+                                <p><strong>التغيير 24 ساعة:</strong> ${crypto.change24h.toFixed(2)}%</p>
+                                <p><strong>الحجم 24 ساعة:</strong> $${this.formatNumber(crypto.volume24h)}</p>
+                                <p><strong>السيولة:</strong> $${this.formatNumber(crypto.liquidity)}</p>
+                            </div>
+                        </div>
+
+                        <div class="analysis-section">
+                            <h3>نقاط المحورية</h3>
+                            <div class="pivot-points">
+                                <div class="pivot-highs">
+                                    <h4>نقاط المقاومة (${analysis.pivotHighs.length})</h4>
+                                    ${analysis.pivotHighs.slice(-3).map(pivot => `
+                                        <div class="pivot-item">
+                                            <span>$${pivot.price.toFixed(6)}</span>
+                                            <small>${new Date(pivot.timestamp).toLocaleDateString('ar-SA')}</small>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                <div class="pivot-lows">
+                                    <h4>نقاط الدعم (${analysis.pivotLows.length})</h4>
+                                    ${analysis.pivotLows.slice(-3).map(pivot => `
+                                        <div class="pivot-item">
+                                            <span>$${pivot.price.toFixed(6)}</span>
+                                            <small>${new Date(pivot.timestamp).toLocaleDateString('ar-SA')}</small>
+                                        </div>
+                                    `).join('')}
+                                </div>
                             </div>
                         </div>
 
@@ -462,19 +622,17 @@ class SupportResistanceAnalyzer {
                             <h3>السيناريوهات المتوقعة</h3>
                             <div class="scenarios">
                                 <div class="scenario bullish">
-                                    <h4>🟢 السيناريو الإيجابي (احتمالية 70%)</h4>
+                                    <h4>🟢 السيناريو الإيجابي (احتمالية ${this.calculateBullishProbability(analysis)}%)</h4>
                                     <p>استمرار الاتجاه الصعودي نحو الأهداف المحددة</p>
                                 </div>
                                 <div class="scenario neutral">
-                                    <h4>🟡 السيناريو المحايد (احتمالية 20%)</h4>
+                                    <h4>🟡 السيناريو المحايد (احتمالية 25%)</h4>
                                     <p>تماسك حول المستوى الحالي مع تذبذب محدود</p>
                                 </div>
                                 <div class="scenario bearish">
-                                    <h4>🔴 السيناريو السلبي (احتمالية 10%)</h4>
+                                    <h4>🔴 السيناريو السلبي (احتمالية ${100 - this.calculateBullishProbability(analysis) - 25}%)</h4>
                                     <p>عودة تحت مستوى المقاومة المخترقة</p>
-                                </div>
-                            </div>
-                        </div>
+                                                    </div>
                     </div>
                 </div>
             </div>
@@ -483,12 +641,25 @@ class SupportResistanceAnalyzer {
         document.body.insertAdjacentHTML('beforeend', modalContent);
     }
 
+    calculateBullishProbability(analysis) {
+        let probability = 50; // احتمالية أساسية
+        
+        // زيادة الاحتمالية بناءً على قوة الاختراق
+        probability += (analysis.breakoutStrength / 100) * 30;
+        
+        // زيادة الاحتمالية بناءً على مؤشر الحجم
+        if (analysis.volumeOscillator > 50) probability += 15;
+        else if (analysis.volumeOscillator > 20) probability += 10;
+        
+        return Math.min(Math.round(probability), 75);
+    }
+
     // إنشاء تنبيه
     setAlert(symbol) {
         const crypto = this.cryptoData.find(c => c.symbol === symbol);
         if (!crypto) return;
 
-        const alertContent = `
+        const modalContent = `
             <div class="modal-overlay" onclick="this.remove()">
                 <div class="modal-content alert-modal" onclick="event.stopPropagation()">
                     <div class="modal-header">
@@ -496,60 +667,193 @@ class SupportResistanceAnalyzer {
                         <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
                     </div>
                     <div class="modal-body">
-                        <div class="alert-form">
+                        <form class="alert-form" onsubmit="analyzer.createAlert(event, '${symbol}')">
                             <div class="form-group">
                                 <label>نوع التنبيه:</label>
-                                <select id="alertType">
-                                    <option value="price">تنبيه سعر</option>
-                                    <option value="volume">تنبيه حجم</option>
-                                    <option value="breakout">تنبيه اختراق</option>
+                                <select name="alertType" required>
+                                    <option value="price_above">السعر أعلى من</option>
+                                    <option value="price_below">السعر أقل من</option>
+                                    <option value="volume_spike">ارتفاع الحجم</option>
+                                    <option value="breakout">اختراق جديد</option>
                                 </select>
                             </div>
+                            
                             <div class="form-group">
-                                <label>السعر المستهدف:</label>
-                                <input type="number" id="targetPrice" value="${crypto.currentPrice.toFixed(6)}" step="0.000001">
+                                <label>القيمة المستهدفة:</label>
+                                <input type="number" name="targetValue" step="0.000001" 
+                                      value="${crypto.currentPrice.toFixed(8)}" step="0.00000001" min="0" required>
+
                             </div>
+                            
                             <div class="form-group">
-                                <label>طريقة التنبيه:</label>
                                 <div class="checkbox-group">
-                                    <label><input type="checkbox" checked> إشعار متصفح</label>
-                                    <label><input type="checkbox"> بريد إلكتروني</label>
-                                    <label><input type="checkbox"> رسالة نصية</label>
+                                    <label>
+                                        <input type="checkbox" name="emailAlert" checked>
+                                        تنبيه بالإيميل
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" name="browserAlert" checked>
+                                        تنبيه المتصفح
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" name="soundAlert">
+                                        تنبيه صوتي
+                                    </label>
                                 </div>
                             </div>
-                            <button class="btn-primary" onclick="analyzer.createAlert('${symbol}'); this.closest('.modal-overlay').remove();">
-                                إنشاء التنبيه
-                            </button>
-                        </div>
+                            
+                            <button type="submit" class="btn-primary">إنشاء التنبيه</button>
+                        </form>
                     </div>
                 </div>
             </div>
         `;
 
-        document.body.insertAdjacentHTML('beforeend', alertContent);
+        document.body.insertAdjacentHTML('beforeend', modalContent);
     }
 
-    createAlert(symbol) {
-        // في التطبيق الحقيقي، ستحفظ التنبيه في قاعدة البيانات
-        alert(`تم إنشاء تنبيه لـ ${symbol} بنجاح!`);
+    createAlert(event, symbol) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
         
-        // طلب إذن الإشعارات
-        if (Notification.permission === 'default') {
+        const alert = {
+            id: Date.now(),
+            symbol: symbol,
+            type: formData.get('alertType'),
+            targetValue: parseFloat(formData.get('targetValue')),
+            emailAlert: formData.get('emailAlert') === 'on',
+            browserAlert: formData.get('browserAlert') === 'on',
+            soundAlert: formData.get('soundAlert') === 'on',
+            created: new Date(),
+            active: true
+        };
+
+        // حفظ التنبيه في localStorage
+        const alerts = JSON.parse(localStorage.getItem('cryptoAlerts') || '[]');
+        alerts.push(alert);
+        localStorage.setItem('cryptoAlerts', JSON.stringify(alerts));
+
+        // طلب إذن التنبيهات
+        if (alert.browserAlert && Notification.permission === 'default') {
             Notification.requestPermission();
         }
+
+        // إغلاق النافذة وإظهار رسالة نجاح
+        event.target.closest('.modal-overlay').remove();
+        this.showSuccessMessage(`تم إنشاء التنبيه لـ ${symbol} بنجاح!`);
     }
-}
 
-// تشغيل التطبيق
-const analyzer = new SupportResistanceAnalyzer();
+    // فحص التنبيهات
+    checkAlerts() {
+        const alerts = JSON.parse(localStorage.getItem('cryptoAlerts') || '[]');
+        const activeAlerts = alerts.filter(alert => alert.active);
 
-// إشعارات المتصفح للاختراقات الجديدة
-function showBreakoutNotification(symbol, price) {
-    if (Notification.permission === 'granted') {
-        new Notification(`اختراق صعودي جديد!`, {
-            body: `${symbol} اخترق المقاومة عند $${price}`,
-            icon: '/favicon.ico',
-            tag: symbol
+        activeAlerts.forEach(alert => {
+            const crypto = this.cryptoData.find(c => c.symbol === alert.symbol);
+            if (!crypto) return;
+
+            let triggered = false;
+            let message = '';
+
+            switch (alert.type) {
+                case 'price_above':
+                    if (crypto.currentPrice >= alert.targetValue) {
+                        triggered = true;
+                        message = `${alert.symbol} وصل إلى $${crypto.currentPrice.toFixed(6)} (الهدف: $${alert.targetValue})`;
+                    }
+                    break;
+                case 'price_below':
+                    if (crypto.currentPrice <= alert.targetValue) {
+                        triggered = true;
+                        message = `${alert.symbol} انخفض إلى $${crypto.currentPrice.toFixed(6)} (الهدف: $${alert.targetValue})`;
+                    }
+                    break;
+                case 'volume_spike':
+                    if (crypto.analysis && crypto.analysis.volumeOscillator > alert.targetValue) {
+                        triggered = true;
+                        message = `${alert.symbol} ارتفاع حجم غير عادي: ${crypto.analysis.volumeOscillator.toFixed(1)}%`;
+                    }
+                    break;
+                case 'breakout':
+                    if (crypto.analysis && crypto.analysis.bullishBreakout) {
+                        triggered = true;
+                        message = `${alert.symbol} اختراق صعودي جديد!`;
+                    }
+                    break;
+            }
+
+            if (triggered) {
+                this.triggerAlert(alert, message);
+                // إلغاء تفعيل التنبيه
+                alert.active = false;
+                localStorage.setItem('cryptoAlerts', JSON.stringify(alerts));
+            }
         });
     }
+
+       triggerAlert(alert, message) {
+        // تنبيه المتصفح
+        if (alert.browserAlert && Notification.permission === 'granted') {
+            new Notification('تنبيه العملات الرقمية', {
+                body: message,
+                icon: '/favicon.ico'
+            });
+        }
+
+        // عرض رسالة في الصفحة
+        this.showSuccessMessage(message);
+    }
+
+    showSuccessMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'success-message';
+        messageDiv.textContent = message;
+        
+        document.body.appendChild(messageDiv);
+        
+        setTimeout(() => {
+            messageDiv.remove();
+        }, 5000);
+    }
+showErrorMessage(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'error-message';
+    messageDiv.textContent = message;
+    
+    document.body.appendChild(messageDiv);
+    
+    setTimeout(() => {
+        messageDiv.remove();
+    }, 5000);
 }
+
+    // تشغيل فحص التنبيهات مع كل تحديث
+    startAlertMonitoring() {
+        setInterval(() => {
+            this.checkAlerts();
+        }, 60000); // فحص كل دقيقة
+    }
+}
+
+// تهيئة التطبيق
+const analyzer = new SupportResistanceAnalyzer();
+
+// بدء مراقبة التنبيهات
+analyzer.startAlertMonitoring();
+
+// طلب إذن التنبيهات عند تحميل الصفحة
+if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+}
+// معالج الأخطاء العامة
+window.addEventListener('error', (event) => {
+    console.error('خطأ عام:', event.error);
+});
+
+// معالج Promise غير المعالجة
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('خطأ Promise:', event.reason);
+    event.preventDefault();
+});
+
+
