@@ -679,8 +679,9 @@ class SupportResistanceAnalyzer {
                             
                             <div class="form-group">
                                 <label>القيمة المستهدفة:</label>
-                                <input type="number" name="targetValue" step="0.000001" 
-                                      value="${crypto.currentPrice.toFixed(8)}" step="0.00000001" min="0" required>
+                              <input type="number" name="targetValue" step="0.00000001"
+       value="${crypto.currentPrice.toFixed(8)}" min="0" required>
+
 
                             </div>
                             
