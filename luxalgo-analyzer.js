@@ -23,66 +23,37 @@ class LuxAlgoBreakoutAnalyzer {
         
         this.updateConnectionStatus('جاري الاتصال...', 'connecting');
         
+        // بدء الاتصال مباشرة بـ WebSocket
         symbols.forEach(symbol => {
-            this.fetchHistoricalData(symbol).then(() => {
-                this.connectKlineStream(symbol);
-            });
+            this.connectKlineStream(symbol);
+            // إنشاء history فارغ لكل رمز
+            this.priceHistory.set(symbol, []);
         });
     }
 
-   async fetchHistoricalData(symbol) {
-    try {
-        // استخدام CORS proxy
-        const proxyUrl = 'https://api.allorigins.win/raw?url=';
-        const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
-        const response = await fetch(proxyUrl + encodeURIComponent(apiUrl));
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        const candles = data.map(k => ({
-            time: k[0],
-            open: parseFloat(k[1]),
-            high: parseFloat(k[2]),
-            low: parseFloat(k[3]),
-            close: parseFloat(k[4]),
-            volume: parseFloat(k[5])
-        }));
-        
-        this.priceHistory.set(symbol, candles);
-        console.log(`تم جلب ${candles.length} شمعة للرمز ${symbol}`);
-        
-    } catch (error) {
-        console.error(`خطأ في جلب بيانات ${symbol}:`, error);
-        // في حالة الفشل، إنشاء history فارغ
-        this.priceHistory.set(symbol, []);
-    }
-}
-
-
     connectKlineStream(symbol) {
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
+        
+        ws.onopen = () => {
+            console.log(`تم الاتصال بـ WebSocket للرمز ${symbol}`);
+        };
         
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             const kline = data.k;
             
-            if (kline.x) { // شمعة مكتملة
-                const candleData = {
-                    time: kline.t,
-                    open: parseFloat(kline.o),
-                    high: parseFloat(kline.h),
-                    low: parseFloat(kline.l),
-                    close: parseFloat(kline.c),
-                    volume: parseFloat(kline.v)
-                };
-                
-                this.updatePriceHistory(symbol, candleData);
-                this.updateConnectionStatus('متصل', 'connected');
-            }
+            const candleData = {
+                time: kline.t,
+                open: parseFloat(kline.o),
+                high: parseFloat(kline.h),
+                low: parseFloat(kline.l),
+                close: parseFloat(kline.c),
+                volume: parseFloat(kline.v),
+                isComplete: kline.x // شمعة مكتملة أم لا
+            };
+            
+            this.updatePriceHistory(symbol, candleData);
+            this.updateConnectionStatus('متصل', 'connected');
         };
         
         ws.onerror = (error) => {
@@ -90,8 +61,9 @@ class LuxAlgoBreakoutAnalyzer {
             this.updateConnectionStatus('خطأ في الاتصال', 'error');
         };
         
-        ws.onclose = () => {
-            console.log(`انقطع الاتصال مع ${symbol}`);
+        ws.onclose = (event) => {
+            console.log(`انقطع الاتصال مع ${symbol}. كود: ${event.code}`);
+            // إعادة الاتصال بعد 5 ثوان
             setTimeout(() => this.connectKlineStream(symbol), 5000);
         };
     }
@@ -102,81 +74,119 @@ class LuxAlgoBreakoutAnalyzer {
         }
         
         const history = this.priceHistory.get(symbol);
-        history.push(newCandle);
         
-        // الاحتفاظ بآخر 500 شمعة فقط
-        if (history.length > 500) {
-            history.shift();
+        if (newCandle.isComplete) {
+            // إضافة الشمعة المكتملة فقط
+            history.push(newCandle);
+            
+            // الاحتفاظ بآخر 100 شمعة (كافية للتحليل)
+            if (history.length > 100) {
+                history.shift();
+            }
+            
+            console.log(`${symbol}: تم إضافة شمعة جديدة. العدد الحالي: ${history.length}`);
         }
         
+        // تحديث البيانات الحالية دائماً
         this.cryptoData.set(symbol, newCandle);
         
-        if (!this.isPaused) {
+        // التحليل فقط عند اكتمال الشمعة وتوفر بيانات كافية
+        if (newCandle.isComplete && history.length >= this.leftBars + this.rightBars + 5 && !this.isPaused) {
             this.analyzeLuxAlgoBreaks();
         }
     }
 
     analyzeLuxAlgoBreaks() {
         const signals = [];
+        let totalSymbolsWithData = 0;
         
         for (const [symbol, history] of this.priceHistory) {
-            if (history.length < this.leftBars + this.rightBars + 1) continue;
-            
-            const pivotHighs = this.findPivotHighs(history);
-            const pivotLows = this.findPivotLows(history);
-            const latestCandle = history[history.length - 1];
-            
-            // فحص اختراق المقاومة
-            const resistance = this.findNearestResistance(pivotHighs, latestCandle.close);
-            if (resistance && latestCandle.close > resistance.price) {
-                const volumeCheck = this.checkVolumeThreshold(history);
-                if (volumeCheck) {
-                    signals.push({
-                        symbol: symbol.toUpperCase(),
-                        type: 'BreakResistance',
-                        price: latestCandle.close,
-                        resistance: resistance.price,
-                        volume: latestCandle.volume,
-                        time: latestCandle.time,
-                        change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2)
-                    });
-                }
+            // التأكد من وجود بيانات كافية
+            const minRequired = this.leftBars + this.rightBars + 5;
+            if (history.length < minRequired) {
+                console.log(`${symbol}: بيانات غير كافية (${history.length}/${minRequired})`);
+                continue;
             }
             
-            // فحص كسر الدعم
-            const support = this.findNearestSupport(pivotLows, latestCandle.close);
-            if (support && latestCandle.close < support.price) {
-                const volumeCheck = this.checkVolumeThreshold(history);
-                if (volumeCheck) {
+            totalSymbolsWithData++;
+            
+            try {
+                const pivotHighs = this.findPivotHighs(history);
+                const pivotLows = this.findPivotLows(history);
+                const latestCandle = history[history.length - 1];
+                
+                // فحص اختراق المقاومة
+                const resistance = this.findNearestResistance(pivotHighs, latestCandle.close);
+                if (resistance && latestCandle.close > resistance.price) {
+                    const volumeCheck = this.checkVolumeThreshold(history);
+                    if (volumeCheck) {
+                        signals.push({
+                            symbol: symbol.toUpperCase(),
+                            type: 'BreakResistance',
+                            price: latestCandle.close,
+                            resistance: resistance.price,
+                            volume: latestCandle.volume,
+                            time: latestCandle.time,
+                            change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2)
+                        });
+                    }
+                }
+                
+                // فحص كسر الدعم
+                const support = this.findNearestSupport(pivotLows, latestCandle.close);
+                if (support && latestCandle.close < support.price) {
+                    const volumeCheck = this.checkVolumeThreshold(history);
+                    if (volumeCheck) {
+                        signals.push({
+                            symbol: symbol.toUpperCase(),
+                            type: 'BreakSupport',
+                            price: latestCandle.close,
+                            support: support.price,
+                            volume: latestCandle.volume,
+                            time: latestCandle.time,
+                            change: ((support.price - latestCandle.close) / support.price * 100).toFixed(2)
+                        });
+                    }
+                }
+                
+                // فحص الذيول الطويلة
+                const wickSignal = this.analyzeWicks(latestCandle);
+                if (wickSignal) {
                     signals.push({
                         symbol: symbol.toUpperCase(),
-                        type: 'BreakSupport',
+                        type: wickSignal.type,
                         price: latestCandle.close,
-                        support: support.price,
-                        volume: latestCandle.volume,
+                        wickSize: wickSignal.size,
                         time: latestCandle.time,
-                        change: ((support.price - latestCandle.close) / support.price * 100).toFixed(2)
+                        bodySize: wickSignal.data.bodySize,
+                        wickPercent: wickSignal.data.wickPercent
                     });
                 }
-            }
-            
-            // فحص الذيول الطويلة
-            const wickSignal = this.analyzeWicks(latestCandle);
-            if (wickSignal) {
-                signals.push({
-                    symbol: symbol.toUpperCase(),
-                    type: wickSignal.type,
-                    price: latestCandle.close,
-                    wickSize: wickSignal.size,
-                    time: latestCandle.time,
-                    ...wickSignal.data
-                });
+                
+            } catch (error) {
+                console.error(`خطأ في تحليل ${symbol}:`, error);
             }
         }
         
+        console.log(`تم تحليل ${totalSymbolsWithData} رمز، وجد ${signals.length} إشارة`);
         this.displayLuxAlgoSignals(signals);
         this.updateLastUpdateTime();
     }
+
+    // إضافة دالة لعرض حالة البيانات
+    displayDataStatus() {
+        const statusInfo = [];
+        for (const [symbol, history] of this.priceHistory) {
+            const required = this.leftBars + this.rightBars + 5;
+            const status = history.length >= required ? '✅' : '⏳';
+            statusInfo.push(`${symbol.toUpperCase()}: ${history.length}/${required} ${status}`);
+        }
+        
+        console.log('حالة البيانات:', statusInfo.join(', '));
+    }
+
+    // باقي الكود يبقى كما هو...
+    // (باقي الدوال من الكود السابق)
 
     findPivotHighs(history) {
         const pivots = [];
