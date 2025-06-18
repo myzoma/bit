@@ -3,45 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>محلل الدعم والمقاومة</title>
-    <link rel="stylesheet" href="style.css">
+    <title>مؤشر الدعم والمقاومة - بيانات حية من Binance</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>محلل الدعم والمقاومة للعملات الرقمية</h1>
-            <div class="controls">
-                <button id="refreshBtn" class="btn-primary">تحديث البيانات</button>
-                <div class="filters">
-                    <label>حد الحجم: <input type="number" id="volumeThreshold" value="20" min="0" step="5"></label>
-                    <label>حد التغيير: <input type="number" id="changeThreshold" value="2" min="0" step="0.5"></label>
-                </div>
-            </div>
+            <h1>🚀 مؤشر الدعم والمقاومة</h1>
+            <p>تحليل الاختراقات الصعودية للعملات الرقمية - بيانات حية من Binance</p>
         </header>
 
-        <div class="stats">
+        <div class="controls">
+            <div class="filter-controls">
+                <div class="control-group">
+                    <label for="volumeThreshold">حد الحجم:</label>
+                    <input type="range" id="volumeThreshold" min="10" max="100" value="20" step="5">
+                    <span id="volumeValue">20%</span>
+                </div>
+                
+                <div class="control-group">
+                    <label for="changeThreshold">حد التغيير:</label>
+                    <input type="range" id="changeThreshold" min="1" max="10" value="2" step="0.5">
+                    <span id="changeValue">2%</span>
+                </div>
+                
+                <button id="refreshBtn" class="btn-primary">
+                    🔄 تحديث البيانات
+                </button>
+            </div>
+        </div>
+
+        <div class="stats-bar">
             <div class="stat-item">
-                <span class="stat-label">العملات المكتشفة:</span>
-                <span id="totalCoins" class="stat-value">0</span>
+                <span class="stat-label">الاختراقات النشطة:</span>
+                <span class="stat-value" id="totalCoins">0</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">آخر تحديث:</span>
-                <span id="lastUpdate" class="stat-value">--</span>
+                <span class="stat-value" id="lastUpdate">--:--</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">التحديث التالي:</span>
-                <span id="nextUpdate" class="stat-value">--</span>
+                <span class="stat-value" id="nextUpdate">--:--</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">مصدر البيانات:</span>
+                <span class="stat-value">Binance API</span>
             </div>
         </div>
 
-        <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+        <div id="loadingSpinner" class="loading-spinner">
             <div class="spinner"></div>
-            <p>جاري تحميل البيانات...</p>
+            <p>جاري تحميل البيانات من Binance...</p>
         </div>
 
-        <div id="cryptoGrid" class="crypto-grid"></div>
+        <div id="cryptoGrid" class="crypto-grid">
+            <!-- سيتم ملء البيانات هنا -->
+        </div>
     </div>
 
     <script src="supportResistance.js"></script>
+    
+    <script>
+        // تحديث قيم المؤشرات في الوقت الفعلي
+        document.getElementById('volumeThreshold').addEventListener('input', function() {
+            document.getElementById('volumeValue').textContent = this.value + '%';
+        });
+        
+        document.getElementById('changeThreshold').addEventListener('input', function() {
+            document.getElementById('changeValue').textContent = this.value + '%';
+        });
+    </script>
 </body>
 </html>
