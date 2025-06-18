@@ -3,58 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>محلل الدعم والمقاومة</title>
-    <link rel="stylesheet" href="style.css">
+    <title>مراقب الاختراقات الصعودية</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🚀 محلل الدعم والمقاومة للعملات الرقمية</h1>
-            <div class="controls">
-                <button id="refreshBtn" class="btn-primary">🔄 تحديث البيانات</button>
-                <div class="filters">
-                    <label>حد الحجم: 
-                        <input type="number" id="volumeThreshold" value="20" min="0" step="5">
-                    </label>
-                    <label>حد التغيير: 
-                        <input type="number" id="changeThreshold" value="2" min="0" step="0.5">
-                    </label>
-                </div>
-            </div>
+            <h1>مراقب الاختراقات الصعودية للعملات المشفرة</h1>
+            <div class="status" id="connectionStatus">جاري الاتصال...</div>
         </header>
-
-        <div class="stats">
-            <div class="stat-item">
-                <span class="stat-label">العملات المكتشفة:</span>
-                <span id="totalCoins" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">آخر تحديث:</span>
-                <span id="lastUpdate" class="stat-value">--</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">التحديث التالي:</span>
-                <span id="nextUpdate" class="stat-value">--</span>
-            </div>
+        
+        <div class="controls">
+            <button id="refreshBtn">تحديث البيانات</button>
+            <div class="last-update">آخر تحديث: <span id="lastUpdate">-</span></div>
         </div>
 
-        <div id="loadingSpinner" class="loading-spinner" style="display: none;">
-            <div class="spinner"></div>
-            <p>جاري تحميل البيانات من Binance...</p>
-        </div>
-
-        <div id="cryptoGrid" class="crypto-grid">
-            <!-- هنا ستظهر العملات -->
+        <div class="grid-container" id="cryptoGrid">
+            <div class="loading">جاري تحميل البيانات...</div>
         </div>
     </div>
 
-    <script>
-        // تشغيل المحلل بعد تحميل الصفحة
-        let analyzer;
-        document.addEventListener('DOMContentLoaded', () => {
-            analyzer = new SupportResistanceAnalyzer();
-        });
-    </script>
-    <script src="supportResistance.js"></script>
+    <script src="breakout-analyzer.js"></script>
 </body>
 </html>
