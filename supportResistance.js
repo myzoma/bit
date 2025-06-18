@@ -279,6 +279,14 @@ class SupportResistanceAnalyzer {
 
     displayBreakouts(breakouts) {
         const grid = document.getElementById('cryptoGrid');
+         // إنشاء العنصر إذا لم يكن موجوداً
+    if (!grid) {
+        const newGrid = document.createElement('div');
+        newGrid.id = 'cryptoGrid';
+        newGrid.className = 'crypto-grid';
+        document.body.appendChild(newGrid);
+        return this.displayBreakouts(breakouts); // إعادة استدعاء الدالة
+    }
         const noResults = document.getElementById('noResults');
         
         if (breakouts.length === 0) {
@@ -408,18 +416,35 @@ class SupportResistanceAnalyzer {
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
     }
 
-    showLoading(show) {
-        const spinner = document.getElementById('loadingSpinner');
-        const grid = document.getElementById('cryptoGrid');
-        
-        if (show) {
-            spinner.style.display = 'flex';
-            grid.style.opacity = '0.5';
-        } else {
-            spinner.style.display = 'none';
-            grid.style.opacity = '1';
-        }
+  showLoading(show) {
+    let spinner = document.getElementById('loadingSpinner');
+    let grid = document.getElementById('cryptoGrid');
+    
+    // إنشاء العناصر إذا لم تكن موجودة
+    if (!spinner) {
+        spinner = document.createElement('div');
+        spinner.id = 'loadingSpinner';
+        spinner.innerHTML = '<div class="spinner"></div><p>جاري التحميل...</p>';
+        spinner.style.display = 'none';
+        document.body.appendChild(spinner);
     }
+    
+    if (!grid) {
+        grid = document.createElement('div');
+        grid.id = 'cryptoGrid';
+        grid.className = 'crypto-grid';
+        document.body.appendChild(grid);
+    }
+    
+    if (show) {
+        spinner.style.display = 'flex';
+        grid.style.opacity = '0.5';
+    } else {
+        spinner.style.display = 'none';
+        grid.style.opacity = '1';
+    }
+}
+
 
     // عرض تحليل مفصل
     showDetailedAnalysis(symbol) {
