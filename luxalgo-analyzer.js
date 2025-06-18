@@ -30,26 +30,38 @@ class LuxAlgoBreakoutAnalyzer {
         });
     }
 
-    async fetchHistoricalData(symbol) {
-        try {
-            const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`);
-            const data = await response.json();
-            
-            const candles = data.map(k => ({
-                time: k[0],
-                open: parseFloat(k[1]),
-                high: parseFloat(k[2]),
-                low: parseFloat(k[3]),
-                close: parseFloat(k[4]),
-                volume: parseFloat(k[5])
-            }));
-            
-            this.priceHistory.set(symbol, candles);
-            console.log(`تم جلب ${candles.length} شمعة للرمز ${symbol}`);
-        } catch (error) {
-            console.error(`خطأ في جلب بيانات ${symbol}:`, error);
+   async fetchHistoricalData(symbol) {
+    try {
+        // استخدام CORS proxy
+        const proxyUrl = 'https://api.allorigins.win/raw?url=';
+        const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
+        const response = await fetch(proxyUrl + encodeURIComponent(apiUrl));
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+        
+        const data = await response.json();
+        
+        const candles = data.map(k => ({
+            time: k[0],
+            open: parseFloat(k[1]),
+            high: parseFloat(k[2]),
+            low: parseFloat(k[3]),
+            close: parseFloat(k[4]),
+            volume: parseFloat(k[5])
+        }));
+        
+        this.priceHistory.set(symbol, candles);
+        console.log(`تم جلب ${candles.length} شمعة للرمز ${symbol}`);
+        
+    } catch (error) {
+        console.error(`خطأ في جلب بيانات ${symbol}:`, error);
+        // في حالة الفشل، إنشاء history فارغ
+        this.priceHistory.set(symbol, []);
     }
+}
+
 
     connectKlineStream(symbol) {
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
