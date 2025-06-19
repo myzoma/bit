@@ -1,6 +1,6 @@
 class LuxAlgoBreakoutAnalyzer {
     constructor() {
-        this.wsList = new Map(); // دعم تعدد WebSocket للرموز
+        this.ws = null;
         this.cryptoData = new Map();
         this.priceHistory = new Map();
         this.leftBars = 15;
@@ -9,114 +9,81 @@ class LuxAlgoBreakoutAnalyzer {
         this.updateInterval = null;
         this.isPaused = false;
         this.currentFilter = 'all';
-        // لا تستدعي init هنا! سنستدعيها من خارج الكلاس لأننا نحتاج async
+        this.init();
     }
 
-    async init() {
-        // 1. جلب الرموز تلقائيًا (حتى 300 رمز USDT)
-        const symbols = await this.fetchSymbols(300);
-
-        // 2. جلب البيانات التاريخية لكل رمز
-        for (const symbol of symbols) {
-            await this.fetchHistoricalData(symbol);
-        }
-
-        // 3. ربط WebSocket بالرموز المحملة
-        this.connectWebSocket(symbols);
+    init() {
+        this.connectWebSocket();
         this.setupEventListeners();
         this.startPeriodicUpdate();
     }
 
-    async fetchSymbols(limit = 300) {
-        const url = "https://api.binance.com/api/v3/exchangeInfo";
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            const symbols = data.symbols
-                .filter(s => s.symbol.endsWith("USDT") && s.status === "TRADING" && s.isSpotTradingAllowed)
-                .map(s => s.symbol)
-                .slice(0, limit);
-            return symbols;
-        } catch (e) {
-            console.error("فشل جلب قائمة الرموز:", e);
-            return ["BTCUSDT", "ETHUSDT"]; // fallback رموز افتراضية
-        }
-    }
-
+    // ✅ نسخة مُحدثة - تستخدم Cloudflare Worker Proxy فقط
     async fetchHistoricalData(symbol) {
-        const proxies = [
-            'https://corsproxy.io/?',
-            'https://cors-anywhere.herokuapp.com/',
-            'https://api.codetabs.com/v1/proxy?quest=',
-            'https://thingproxy.freeboard.io/fetch/'
-        ];
+        const proxy = 'https://bitter-flower-8531.dr-glume.workers.dev/?url=';
         const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
+        const fullUrl = proxy + encodeURIComponent(apiUrl);
 
-        for (let i = 0; i < proxies.length; i++) {
-            try {
-                let response;
-                if (proxies[i].includes('codetabs')) {
-                    response = await fetch(proxies[i] + encodeURIComponent(apiUrl));
-                } else {
-                    response = await fetch(proxies[i] + apiUrl);
-                }
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                let data = await response.text();
-                try {
-                    data = JSON.parse(data);
-                } catch (e) {
-                    const jsonMatch = data.match(/\[.*\]/s);
-                    if (jsonMatch) {
-                        data = JSON.parse(jsonMatch[0]);
-                    } else {
-                        throw new Error('Invalid JSON format');
-                    }
-                }
-                if (!Array.isArray(data)) throw new Error('Data is not an array');
-
-                const candles = data.map(k => ({
-                    time: k[0],
-                    open: parseFloat(k[1]),
-                    high: parseFloat(k[2]),
-                    low: parseFloat(k[3]),
-                    close: parseFloat(k[4]),
-                    volume: parseFloat(k[5]),
-                    isComplete: true // بيانات تاريخية كاملة
-                }));
-
-                this.priceHistory.set(symbol, candles);
-                return;
-            } catch (error) {
-                continue;
+        try {
+            console.log(`🔄 محاولة جلب ${symbol} عبر Cloudflare Worker Proxy`);
+            const response = await fetch(fullUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
             }
+
+            let data = await response.text();
+
+            try {
+                data = JSON.parse(data);
+            } catch (e) {
+                const jsonMatch = data.match(/\[.*\]/s);
+                if (jsonMatch) {
+                    data = JSON.parse(jsonMatch[0]);
+                } else {
+                    throw new Error('Invalid JSON format');
+                }
+            }
+
+            if (!Array.isArray(data)) {
+                throw new Error('Data is not an array');
+            }
+
+            const candles = data.map(k => ({
+                time: k[0],
+                open: parseFloat(k[1]),
+                high: parseFloat(k[2]),
+                low: parseFloat(k[3]),
+                close: parseFloat(k[4]),
+                volume: parseFloat(k[5])
+            }));
+
+            this.priceHistory.set(symbol, candles);
+            console.log(`✅ تم جلب ${candles.length} شمعة للرمز ${symbol}`);
+            return;
+
+        } catch (error) {
+            console.error(`❌ فشل جلب البيانات التاريخية لـ ${symbol}:`, error.message);
+            this.priceHistory.set(symbol, []);
         }
-        this.priceHistory.set(symbol, []);
     }
 
-    connectWebSocket(symbols) {
+    connectWebSocket() {
+        const symbols = ['btcusdt', 'ethusdt', 'adausdt', 'bnbusdt', 'xrpusdt', 'solusdt', 'dogeusdt', 'avaxusdt', 'linkusdt', 'maticusdt'];
         this.updateConnectionStatus('جاري الاتصال...', 'connecting');
         symbols.forEach(symbol => {
             this.connectKlineStream(symbol);
-            if (!this.priceHistory.has(symbol)) {
-                this.priceHistory.set(symbol, []);
-            }
+            this.priceHistory.set(symbol, []);
         });
     }
 
     connectKlineStream(symbol) {
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
-        this.wsList.set(symbol, ws);
-
+        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
         ws.onopen = () => {
-            // console.log(`تم الاتصال بـ WebSocket للرمز ${symbol}`);
+            console.log(`تم الاتصال بـ WebSocket للرمز ${symbol}`);
         };
-
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             const kline = data.k;
-
             const candleData = {
                 time: kline.t,
                 open: parseFloat(kline.o),
@@ -126,17 +93,15 @@ class LuxAlgoBreakoutAnalyzer {
                 volume: parseFloat(kline.v),
                 isComplete: kline.x
             };
-
             this.updatePriceHistory(symbol, candleData);
             this.updateConnectionStatus('متصل', 'connected');
         };
-
         ws.onerror = (error) => {
+            console.error(`خطأ في WebSocket لـ ${symbol}:`, error);
             this.updateConnectionStatus('خطأ في الاتصال', 'error');
         };
-
         ws.onclose = (event) => {
-            // إعادة الاتصال بعد 5 ثوان
+            console.log(`انقطع الاتصال مع ${symbol}. كود: ${event.code}`);
             setTimeout(() => this.connectKlineStream(symbol), 5000);
         };
     }
@@ -145,21 +110,16 @@ class LuxAlgoBreakoutAnalyzer {
         if (!this.priceHistory.has(symbol)) {
             this.priceHistory.set(symbol, []);
         }
-
         const history = this.priceHistory.get(symbol);
-
         if (newCandle.isComplete) {
             history.push(newCandle);
-            // الاحتفاظ بآخر 100 شمعة
             if (history.length > 100) {
                 history.shift();
             }
+            console.log(`${symbol}: تم إضافة شمعة جديدة. العدد الحالي: ${history.length}`);
         }
-
         this.cryptoData.set(symbol, newCandle);
-
-        const minRequired = this.leftBars + this.rightBars + 5;
-        if (newCandle.isComplete && history.length >= minRequired && !this.isPaused) {
+        if (newCandle.isComplete && history.length >= this.leftBars + this.rightBars + 5 && !this.isPaused) {
             this.analyzeLuxAlgoBreaks();
         }
     }
@@ -167,46 +127,47 @@ class LuxAlgoBreakoutAnalyzer {
     analyzeLuxAlgoBreaks() {
         const signals = [];
         let totalSymbolsWithData = 0;
-
         for (const [symbol, history] of this.priceHistory) {
             const minRequired = this.leftBars + this.rightBars + 5;
-            if (history.length < minRequired) continue;
-
+            if (history.length < minRequired) {
+                console.log(`${symbol}: بيانات غير كافية (${history.length}/${minRequired})`);
+                continue;
+            }
             totalSymbolsWithData++;
             try {
                 const pivotHighs = this.findPivotHighs(history);
                 const pivotLows = this.findPivotLows(history);
                 const latestCandle = history[history.length - 1];
-
-                // فحص اختراق المقاومة
                 const resistance = this.findNearestResistance(pivotHighs, latestCandle.close);
-                if (resistance && latestCandle.close > resistance.price && this.checkVolumeThreshold(history)) {
-                    signals.push({
-                        symbol: symbol.toUpperCase(),
-                        type: 'BreakResistance',
-                        price: latestCandle.close,
-                        resistance: resistance.price,
-                        volume: latestCandle.volume,
-                        time: latestCandle.time,
-                        change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2)
-                    });
+                if (resistance && latestCandle.close > resistance.price) {
+                    const volumeCheck = this.checkVolumeThreshold(history);
+                    if (volumeCheck) {
+                        signals.push({
+                            symbol: symbol.toUpperCase(),
+                            type: 'BreakResistance',
+                            price: latestCandle.close,
+                            resistance: resistance.price,
+                            volume: latestCandle.volume,
+                            time: latestCandle.time,
+                            change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2)
+                        });
+                    }
                 }
-
-                // فحص كسر الدعم
                 const support = this.findNearestSupport(pivotLows, latestCandle.close);
-                if (support && latestCandle.close < support.price && this.checkVolumeThreshold(history)) {
-                    signals.push({
-                        symbol: symbol.toUpperCase(),
-                        type: 'BreakSupport',
-                        price: latestCandle.close,
-                        support: support.price,
-                        volume: latestCandle.volume,
-                        time: latestCandle.time,
-                        change: ((support.price - latestCandle.close) / support.price * 100).toFixed(2)
-                    });
+                if (support && latestCandle.close < support.price) {
+                    const volumeCheck = this.checkVolumeThreshold(history);
+                    if (volumeCheck) {
+                        signals.push({
+                            symbol: symbol.toUpperCase(),
+                            type: 'BreakSupport',
+                            price: latestCandle.close,
+                            support: support.price,
+                            volume: latestCandle.volume,
+                            time: latestCandle.time,
+                            change: ((support.price - latestCandle.close) / support.price * 100).toFixed(2)
+                        });
+                    }
                 }
-
-                // فحص الذيول الطويلة
                 const wickSignal = this.analyzeWicks(latestCandle);
                 if (wickSignal) {
                     signals.push({
@@ -219,14 +180,23 @@ class LuxAlgoBreakoutAnalyzer {
                         wickPercent: wickSignal.data.wickPercent
                     });
                 }
-
             } catch (error) {
-                // تجاهل الأخطاء في التحليل لكل رمز
+                console.error(`خطأ في تحليل ${symbol}:`, error);
             }
         }
-
+        console.log(`تم تحليل ${totalSymbolsWithData} رمز، وجد ${signals.length} إشارة`);
         this.displayLuxAlgoSignals(signals);
         this.updateLastUpdateTime();
+    }
+
+    displayDataStatus() {
+        const statusInfo = [];
+        for (const [symbol, history] of this.priceHistory) {
+            const required = this.leftBars + this.rightBars + 5;
+            const status = history.length >= required ? '✅' : '⏳';
+            statusInfo.push(`${symbol.toUpperCase()}: ${history.length}/${required} ${status}`);
+        }
+        console.log('حالة البيانات:', statusInfo.join(', '));
     }
 
     findPivotHighs(history) {
@@ -494,7 +464,6 @@ class LuxAlgoBreakoutAnalyzer {
         const leftBarsInput = document.getElementById('leftBars');
         const rightBarsInput = document.getElementById('rightBars');
         const volumeThreshInput = document.getElementById('volumeThresh');
-
         if (leftBarsInput) {
             leftBarsInput.addEventListener('change', (e) => {
                 this.leftBars = parseInt(e.target.value) || 15;
@@ -534,19 +503,14 @@ class LuxAlgoBreakoutAnalyzer {
     resetData() {
         this.cryptoData.clear();
         this.priceHistory.clear();
-
         const grid = document.getElementById('cryptoGrid');
         if (grid) {
             grid.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>جاري إعادة تحميل البيانات...</p></div>';
         }
-        for (let ws of this.wsList.values()) {
-            try { ws.close(); } catch (e) { }
+        if (this.ws) {
+            this.ws.close();
         }
-        this.wsList.clear();
-
-        setTimeout(async () => {
-            await this.init();
-        }, 1000);
+        setTimeout(() => this.connectWebSocket(), 1000);
     }
 
     setFilter(filter) {
@@ -563,8 +527,8 @@ class LuxAlgoBreakoutAnalyzer {
     }
 
     destroy() {
-        for (let ws of this.wsList.values()) {
-            try { ws.close(); } catch (e) { }
+        if (this.ws) {
+            this.ws.close();
         }
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
@@ -589,14 +553,11 @@ class LuxAlgoBreakoutAnalyzer {
     }
 }
 
-// تشغيل التطبيق عند تحميل الصفحة
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     const analyzer = new LuxAlgoBreakoutAnalyzer();
-    await analyzer.init();
     setInterval(() => {
         analyzer.displayStats();
     }, 10000);
-
     window.addEventListener('beforeunload', () => {
         analyzer.destroy();
     });
