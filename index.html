@@ -9,31 +9,14 @@
 <body>
     <div class="container">
         <header>
-            <h1>🚀 مراقب الاختراقات الصعودية للعملات المشفرة</h1>
-            <div class="header-info">
-                <div class="status" id="connectionStatus">جاري الاتصال...</div>
-                <div class="last-update">آخر تحديث: <span id="lastUpdate">-</span></div>
+            <div class="header-content">
+                <div class="header-info">
+                    <div class="status" id="connectionStatus">جاري الاتصال...</div>
+                    <div class="last-update">آخر تحديث: <span id="lastUpdate">-</span></div>
+                </div>
+                <h1>🚀 مراقب الاختراقات الصعودية للعملات المشفرة</h1>
             </div>
         </header>
-
-        <!-- قسم الإعدادات -->
-        <div class="settings-panel">
-            <h3>⚙️ إعدادات التحليل</h3>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <label for="leftBars">الأعمدة اليسرى:</label>
-                    <input type="number" id="leftBars" value="15" min="5" max="50">
-                </div>
-                <div class="setting-item">
-                    <label for="rightBars">الأعمدة اليمنى:</label>
-                    <input type="number" id="rightBars" value="15" min="5" max="50">
-                </div>
-                <div class="setting-item">
-                    <label for="volumeThresh">حد مؤشر الحجم:</label>
-                    <input type="number" id="volumeThresh" value="20" min="0" max="100" step="5">
-                </div>
-            </div>
-        </div>
 
         <!-- قسم الإحصائيات -->
         <div class="stats-panel">
@@ -42,6 +25,7 @@
                 <div>الرموز المتصلة: <span class="stat-value">0</span></div>
                 <div>إجمالي الشموع: <span class="stat-value">0</span></div>
                 <div>متوسط الشموع لكل رمز: <span class="stat-value">0</span></div>
+                <div>البطاقات المثبتة: <span class="stat-value">0</span></div>
             </div>
         </div>
 
@@ -72,7 +56,7 @@
                     عدد الإشارات: <span id="signalCount">0</span>
                 </div>
             </div>
-            
+                        
             <div class="grid-container" id="cryptoGrid">
                 <div class="loading">
                     <div class="loading-spinner"></div>
