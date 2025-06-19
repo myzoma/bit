@@ -338,9 +338,11 @@ class LuxAlgoBreakoutAnalyzer {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-   async connectWebSocket() {
+  // استبدل كامل دالة connectWebSocket:
+async connectWebSocket() {
     this.updateConnectionStatus('جاري فحص جميع العملات...', 'connecting');
     
+    // جلب جميع العملات وتحليلها
     const validSymbols = await this.scanAndFilterSymbols();
     
     if (validSymbols.length === 0) {
@@ -350,11 +352,171 @@ class LuxAlgoBreakoutAnalyzer {
     
     this.updateConnectionStatus(`تم اختيار ${validSymbols.length} عملة بواسطة الاستراتيجية`, 'connected');
     
+    // الاتصال بالعملات المختارة فقط
     validSymbols.forEach(symbol => {
         this.connectKlineStream(symbol);
         this.priceHistory.set(symbol, []);
         this.dailyData.set(symbol, []);
     });
+}
+
+// الدالة الرئيسية للفحص والفلترة
+async scanAndFilterSymbols() {
+    try {
+        // 1. جلب جميع العملات
+        const allSymbols = await this.getAllUSDTSymbols();
+        console.log(`فحص ${allSymbols.length} عملة...`);
+        
+        // 2. تحليل كل عملة وفلترة الصالحة
+        const validSymbols = [];
+        const batchSize = 10; // تحليل 10 عملات في المرة
+        
+        for (let i = 0; i < allSymbols.length; i += batchSize) {
+            const batch = allSymbols.slice(i, i + batchSize);
+            const batchResults = await this.analyzeSymbolsBatch(batch);
+            validSymbols.push(...batchResults);
+            
+            // تحديث التقدم
+            this.updateConnectionStatus(
+                `فحص ${Math.min(i + batchSize, allSymbols.length)}/${allSymbols.length} عملة...`, 
+                'connecting'
+            );
+            
+            // راحة قصيرة لتجنب rate limiting
+            await this.sleep(100);
+        }
+        
+        console.log(`العملات المختارة بواسطة الاستراتيجية: ${validSymbols.length}`);
+        return validSymbols;
+        
+    } catch (error) {
+        console.error('خطأ في فحص العملات:', error);
+        return [];
+    }
+}
+
+// جلب جميع عملات USDT
+async getAllUSDTSymbols() {
+    const response = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+    const data = await response.json();
+    
+    return data.symbols
+        .filter(symbol => 
+            symbol.symbol.endsWith('USDT') && 
+            symbol.status === 'TRADING' &&
+            !symbol.symbol.includes('DOWN') &&
+            !symbol.symbol.includes('UP') &&
+            !symbol.symbol.includes('BULL') &&
+            !symbol.symbol.includes('BEAR')
+        )
+        .map(symbol => symbol.symbol.toLowerCase());
+}
+
+// تحليل مجموعة من العملات
+async analyzeSymbolsBatch(symbols) {
+    const validSymbols = [];
+    
+    const promises = symbols.map(async (symbol) => {
+        try {
+            // جلب البيانات التاريخية
+            const historyData = await this.fetchHistoricalDataForAnalysis(symbol);
+            
+            if (historyData.length < 50) return null; // بيانات غير كافية
+            
+            // تطبيق استراتيجية LuxAlgo
+            const signals = this.analyzeLuxAlgoForSymbol(historyData, symbol);
+            
+            // فحص معايير الاستراتيجية
+            if (this.meetsStrategyRequirements(signals, historyData)) {
+                return symbol;
+            }
+            
+            return null;
+        } catch (error) {
+            return null;
+        }
+    });
+    
+    const results = await Promise.all(promises);
+    return results.filter(symbol => symbol !== null);
+}
+
+// فحص متطلبات الاستراتيجية
+meetsStrategyRequirements(signals, historyData) {
+    const latestCandle = historyData[historyData.length - 1];
+    
+    // الشروط الأساسية للاستراتيجية:
+    return (
+        // 1. وجود إشارة حديثة (آخر 5 شموع)
+        signals.length > 0 &&
+        
+        // 2. حجم تداول كافي
+        parseFloat(latestCandle.volume) > 0 &&
+        
+        // 3. تحرك سعري (ليس سعر ثابت)
+        parseFloat(latestCandle.high) !== parseFloat(latestCandle.low) &&
+        
+        // 4. شمعة مكتملة
+        latestCandle.close_time < Date.now()
+    );
+}
+
+// تحليل LuxAlgo لعملة واحدة
+analyzeLuxAlgoForSymbol(historyData, symbol) {
+    const signals = [];
+    
+    for (let i = 2; i < historyData.length; i++) {
+        const currentCandle = historyData[i];
+        const prevCandle = historyData[i - 1];
+        
+        // تطبيق منطق الاستراتيجية هنا
+        const tailSize = this.calculateTailSize(currentCandle);
+        const bodySize = this.calculateBodySize(currentCandle);
+        
+        // شروط إشارة الذيل الصاعد
+        if (tailSize > 50 && bodySize < 30) {
+            signals.push({
+                symbol: symbol,
+                type: 'bullish_tail',
+                time: currentCandle.close_time,
+                price: parseFloat(currentCandle.close)
+            });
+        }
+        
+        // يمكن إضافة المزيد من الإشارات هنا
+    }
+    
+    return signals;
+}
+
+// جلب بيانات تاريخية للتحليل
+async fetchHistoricalDataForAnalysis(symbol, limit = 100) {
+    try {
+        const response = await fetch(
+            `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1h&limit=${limit}`
+        );
+        
+        if (!response.ok) return [];
+        
+        const data = await response.json();
+        return data.map(candle => ({
+            open_time: candle[0],
+            open: candle[1],
+            high: candle[2],
+            low: candle[3],
+            close: candle[4],
+            volume: candle[5],
+            close_time: candle[6]
+        }));
+        
+    } catch (error) {
+        return [];
+    }
+}
+
+// دالة مساعدة للانتظار
+sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
     connectKlineStream(symbol) {
