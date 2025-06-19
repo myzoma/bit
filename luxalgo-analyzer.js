@@ -412,22 +412,29 @@ async getAllUSDTSymbols() {
         .map(symbol => symbol.symbol.toLowerCase());
 }
 
-// تحليل مجموعة من العملات
+// استبدل دالة analyzeSymbolsBatch للتشخيص:
 async analyzeSymbolsBatch(symbols) {
     const validSymbols = [];
+    let debugCount = 0;
     
     const promises = symbols.map(async (symbol) => {
         try {
-            // جلب البيانات التاريخية
             const historyData = await this.fetchHistoricalDataForAnalysis(symbol);
             
-            if (historyData.length < 50) return null; // بيانات غير كافية
+            if (historyData.length < 20) {
+                if (debugCount < 5) console.log(`${symbol}: بيانات غير كافية`);
+                return null;
+            }
             
-            // تطبيق استراتيجية LuxAlgo
             const signals = this.analyzeLuxAlgoForSymbol(historyData, symbol);
+            const meetsReq = this.meetsStrategyRequirements(signals, historyData);
             
-            // فحص معايير الاستراتيجية
-            if (this.meetsStrategyRequirements(signals, historyData)) {
+            if (debugCount < 5) {
+                console.log(`${symbol}: إشارات=${signals.length}, يحقق الشروط=${meetsReq}`);
+                debugCount++;
+            }
+            
+            if (meetsReq) {
                 return symbol;
             }
             
@@ -440,6 +447,7 @@ async analyzeSymbolsBatch(symbols) {
     const results = await Promise.all(promises);
     return results.filter(symbol => symbol !== null);
 }
+
 
 // فحص متطلبات الاستراتيجية
 meetsStrategyRequirements(signals, historyData) {
