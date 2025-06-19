@@ -1149,7 +1149,38 @@ sleep(ms) {
         }
     }
 }
+calculateTailSize(candle) {
+    const open = parseFloat(candle.open);
+    const high = parseFloat(candle.high);
+    const low = parseFloat(candle.low);
+    const close = parseFloat(candle.close);
+    
+    const totalRange = high - low;
+    if (totalRange === 0) return 0;
+    
+    // حساب الذيل السفلي
+    const bodyLow = Math.min(open, close);
+    const lowerTail = bodyLow - low;
+    
+    // إرجاع النسبة المئوية للذيل
+    return (lowerTail / totalRange) * 100;
+}
 
+calculateBodySize(candle) {
+    const open = parseFloat(candle.open);
+    const high = parseFloat(candle.high);
+    const low = parseFloat(candle.low);
+    const close = parseFloat(candle.close);
+    
+    const totalRange = high - low;
+    if (totalRange === 0) return 0;
+    
+    // حساب حجم الجسم
+    const bodySize = Math.abs(close - open);
+    
+    // إرجاع النسبة المئوية للجسم
+    return (bodySize / totalRange) * 100;
+}
 // تشغيل المحلل عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', () => {
     const analyzer = new LuxAlgoBreakoutAnalyzer();
