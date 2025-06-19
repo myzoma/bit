@@ -73,6 +73,7 @@ class LuxAlgoBreakoutAnalyzer {
         symbols.forEach(symbol => {
             this.connectKlineStream(symbol);
             this.priceHistory.set(symbol, []);
+            this.fetchHistoricalData(symbol);
         });
     }
 
