@@ -338,17 +338,24 @@ class LuxAlgoBreakoutAnalyzer {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-     connectWebSocket() {
-        const symbols = ['btcusdt', 'ethusdt', 'adausdt', 'bnbusdt', 'xrpusdt', 'solusdt', 'dogeusdt', 'avaxusdt', 'linkusdt', 'maticusdt'];
-
-        this.updateConnectionStatus('جاري الاتصال...', 'connecting');
-        symbols.forEach(symbol => {
-            this.connectKlineStream(symbol);
-            this.priceHistory.set(symbol, []);
-            this.dailyData.set(symbol, []);
-            this.fetchHistoricalData(symbol);
-        });
+   async connectWebSocket() {
+    this.updateConnectionStatus('جاري فحص جميع العملات...', 'connecting');
+    
+    const validSymbols = await this.scanAndFilterSymbols();
+    
+    if (validSymbols.length === 0) {
+        this.updateConnectionStatus('لا توجد عملات تحقق شروط الاستراتيجية', 'error');
+        return;
     }
+    
+    this.updateConnectionStatus(`تم اختيار ${validSymbols.length} عملة بواسطة الاستراتيجية`, 'connected');
+    
+    validSymbols.forEach(symbol => {
+        this.connectKlineStream(symbol);
+        this.priceHistory.set(symbol, []);
+        this.dailyData.set(symbol, []);
+    });
+}
 
     connectKlineStream(symbol) {
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1h`);
@@ -450,7 +457,7 @@ class LuxAlgoBreakoutAnalyzer {
                             resistance: resistance.price,
                             nextTarget: nextTarget ? nextTarget.price : null,
                             volume: latestCandle.volume,
-                            time: Date.now(),
+                           time: latestCandle.time,
                             change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2),
                             change24h: change24h,
                             rsi: rsi,
