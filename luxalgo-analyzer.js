@@ -425,7 +425,7 @@ runOriginalAnalysis(historyData, symbol) {
         const tailSize = this.calculateTailSize(currentCandle);
         const bodySize = this.calculateBodySize(currentCandle);
         
-        if (tailSize > 50 && bodySize < 30 && currentCandle.close > currentCandle.open) {
+        if (tailSize > 60 && bodySize < 20 && currentCandle.close > currentCandle.open) {
             signals.push({
                 symbol: symbol,
                 type: 'bullish_tail',
