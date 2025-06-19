@@ -450,7 +450,7 @@ class LuxAlgoBreakoutAnalyzer {
                             resistance: resistance.price,
                             nextTarget: nextTarget ? nextTarget.price : null,
                             volume: latestCandle.volume,
-                            time: latestCandle.time,
+                            time: Date.now(),
                             change: ((latestCandle.close - resistance.price) / resistance.price * 100).toFixed(2),
                             change24h: change24h,
                             rsi: rsi,
