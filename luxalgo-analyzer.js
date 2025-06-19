@@ -1147,9 +1147,9 @@ sleep(ms) {
                 <div>البطاقات المثبتة: <span class="stat-value">${stats.persistentCards}</span></div>
             `;
         }
+      
     }
-}
-calculateTailSize(candle) {
+      calculateTailSize(candle) {
     const open = parseFloat(candle.open);
     const high = parseFloat(candle.high);
     const low = parseFloat(candle.low);
@@ -1181,6 +1181,8 @@ calculateBodySize(candle) {
     // إرجاع النسبة المئوية للجسم
     return (bodySize / totalRange) * 100;
 }
+}
+
 // تشغيل المحلل عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', () => {
     const analyzer = new LuxAlgoBreakoutAnalyzer();
