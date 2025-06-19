@@ -361,140 +361,92 @@ async connectWebSocket() {
 }
 
 // الدالة الرئيسية للفحص والفلترة
+// استبدل scanAndFilterSymbols بالكامل:
 async scanAndFilterSymbols() {
     try {
-        // 1. جلب جميع العملات
-        const allSymbols = await this.getAllUSDTSymbols();
-        console.log(`فحص ${allSymbols.length} عملة...`);
+        // جلب جميع العملات
+        const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+        const allTickers = await response.json();
         
-        // 2. تحليل كل عملة وفلترة الصالحة
+        const usdtSymbols = allTickers
+            .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume) > 500000)
+            .map(t => t.symbol.toLowerCase());
+        
+        console.log(`فحص ${usdtSymbols.length} عملة بالاستراتيجية...`);
+        
+        // فحص كل عملة بالاستراتيجية
         const validSymbols = [];
-        const batchSize = 10; // تحليل 10 عملات في المرة
         
-        for (let i = 0; i < allSymbols.length; i += batchSize) {
-            const batch = allSymbols.slice(i, i + batchSize);
-            const batchResults = await this.analyzeSymbolsBatch(batch);
-            validSymbols.push(...batchResults);
-            
-            // تحديث التقدم
-            this.updateConnectionStatus(
-                `فحص ${Math.min(i + batchSize, allSymbols.length)}/${allSymbols.length} عملة...`, 
-                'connecting'
-            );
-            
-            // راحة قصيرة لتجنب rate limiting
-            await this.sleep(100);
+        for (const symbol of usdtSymbols) {
+            try {
+                // جلب البيانات
+                const klineResponse = await fetch(
+                    `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1h&limit=100`
+                );
+                const klineData = await klineResponse.json();
+                
+                if (klineData.length < 50) continue;
+                
+                // تطبيق استراتيجية لوكس الجو
+                const hasValidSignal = this.checkLuxAlgoSignal(klineData);
+                
+                if (hasValidSignal) {
+                    validSymbols.push(symbol);
+                    console.log(`✅ ${symbol.toUpperCase()} - تحقق شروط الاستراتيجية`);
+                }
+                
+                // راحة قصيرة
+                await new Promise(resolve => setTimeout(resolve, 50));
+                
+            } catch (error) {
+                continue;
+            }
         }
         
-        console.log(`العملات المختارة بواسطة الاستراتيجية: ${validSymbols.length}`);
+        console.log(`🎯 العملات المختارة بالاستراتيجية: ${validSymbols.length}`);
+        
+        // إذا لم توجد عملات تحقق الشروط = لا نعرض شيء
         return validSymbols;
         
     } catch (error) {
-        console.error('خطأ في فحص العملات:', error);
-        return [];
+        console.error('خطأ في الفحص:', error);
+        return []; // مصفوفة فارغة = لا شيء يُعرض
     }
 }
 
-// جلب جميع عملات USDT
-async getAllUSDTSymbols() {
-    const response = await fetch('https://api.binance.com/api/v3/exchangeInfo');
-    const data = await response.json();
+// الاستراتيجية الحقيقية
+checkLuxAlgoSignal(klineData) {
+    const latestCandles = klineData.slice(-10); // آخر 10 شموع
     
-    return data.symbols
-        .filter(symbol => 
-            symbol.symbol.endsWith('USDT') && 
-            symbol.status === 'TRADING' &&
-            !symbol.symbol.includes('DOWN') &&
-            !symbol.symbol.includes('UP') &&
-            !symbol.symbol.includes('BULL') &&
-            !symbol.symbol.includes('BEAR')
-        )
-        .map(symbol => symbol.symbol.toLowerCase());
-}
-
-// استبدل دالة analyzeSymbolsBatch للتشخيص:
-async analyzeSymbolsBatch(symbols) {
-    const validSymbols = [];
-    let debugCount = 0;
-    
-    const promises = symbols.map(async (symbol) => {
-        try {
-            const historyData = await this.fetchHistoricalDataForAnalysis(symbol);
-            
-            if (historyData.length < 20) {
-                if (debugCount < 5) console.log(`${symbol}: بيانات غير كافية`);
-                return null;
-            }
-            
-            const signals = this.analyzeLuxAlgoForSymbol(historyData, symbol);
-            const meetsReq = this.meetsStrategyRequirements(signals, historyData);
-            
-            if (debugCount < 5) {
-                console.log(`${symbol}: إشارات=${signals.length}, يحقق الشروط=${meetsReq}`);
-                debugCount++;
-            }
-            
-            if (meetsReq) {
-                return symbol;
-            }
-            
-            return null;
-        } catch (error) {
-            return null;
-        }
-    });
-    
-    const results = await Promise.all(promises);
-    return results.filter(symbol => symbol !== null);
-}
-
-
-// فحص متطلبات الاستراتيجية
-meetsStrategyRequirements(signals, historyData) {
-    const latestCandle = historyData[historyData.length - 1];
-    
-    // الشروط الأساسية للاستراتيجية:
-    return (
-        // 1. وجود إشارة حديثة (آخر 5 شموع)
-        signals.length > 0 &&
+    for (const candle of latestCandles) {
+        const open = parseFloat(candle[1]);
+        const high = parseFloat(candle[2]);
+        const low = parseFloat(candle[3]);
+        const close = parseFloat(candle[4]);
         
-        // 2. حجم تداول كافي
-        parseFloat(latestCandle.volume) > 0 &&
+        // حساب الذيل والجسم
+        const totalRange = high - low;
+        if (totalRange === 0) continue;
         
-        // 3. تحرك سعري (ليس سعر ثابت)
-        parseFloat(latestCandle.high) !== parseFloat(latestCandle.low) &&
+        const bodySize = Math.abs(close - open);
+        const lowerTail = Math.min(open, close) - low;
+        const upperTail = high - Math.max(open, close);
         
-        // 4. شمعة مكتملة
-        latestCandle.close_time < Date.now()
-    );
-}
-
-// تحليل LuxAlgo لعملة واحدة
-analyzeLuxAlgoForSymbol(historyData, symbol) {
-    const signals = [];
-    
-    for (let i = 2; i < historyData.length; i++) {
-        const currentCandle = historyData[i];
-        const prevCandle = historyData[i - 1];
-        
-        // تطبيق منطق الاستراتيجية هنا
-        const tailSize = this.calculateTailSize(currentCandle);
-        const bodySize = this.calculateBodySize(currentCandle);
+        const lowerTailPercent = (lowerTail / totalRange) * 100;
+        const bodyPercent = (bodySize / totalRange) * 100;
         
         // شروط إشارة الذيل الصاعد
-        if (tailSize > 50 && bodySize < 30) {
-            signals.push({
-                symbol: symbol,
-                type: 'bullish_tail',
-                time: currentCandle.close_time,
-                price: parseFloat(currentCandle.close)
-            });
+        if (lowerTailPercent > 50 && bodyPercent < 40 && close > open) {
+            return true;
         }
         
-        // يمكن إضافة المزيد من الإشارات هنا
+        // شروط إشارة الذيل الهابط  
+        if (upperTail / totalRange > 0.5 && bodyPercent < 40 && close < open) {
+            return true;
+        }
     }
     
-    return signals;
+    return false;
 }
 
 // جلب بيانات تاريخية للتحليل
