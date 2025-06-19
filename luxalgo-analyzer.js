@@ -19,55 +19,159 @@ class LuxAlgoBreakoutAnalyzer {
     }
 
     // ✅ نسخة مُحدثة - تستخدم Cloudflare Worker Proxy فقط
-    async fetchHistoricalData(symbol) {
-          console.log("استدعاء fetchHistoricalData لـ", symbol);
-       const proxy = 'https://bitter-flower-8531.dr-glume.workers.dev/?url=';
-        const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
+   async fetchHistoricalData(symbol) {
+    console.log("استدعاء fetchHistoricalData لـ", symbol);
+    
+    // قائمة بروكسيات متعددة للاحتياط
+    const proxies = [
+        'https://bitter-flower-8531.dr-glume.workers.dev/?url=',
+        'https://cors-anywhere.herokuapp.com/',
+        'https://api.allorigins.win/raw?url=',
+        'https://thingproxy.freeboard.io/fetch/'
+    ];
+    
+    const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
+    
+    // محاولة جلب البيانات مباشرة أولاً
+    try {
+        console.log(`🔄 محاولة جلب ${symbol} مباشرة من Binance`);
+        const response = await this.fetchWithTimeout(apiUrl, 10000);
+        
+        if (response.ok) {
+            const data = await response.json();
+            return this.processKlineData(symbol, data);
+        }
+    } catch (error) {
+        console.log(`⚠️ فشل الاتصال المباشر لـ ${symbol}:`, error.message);
+    }
+    
+    // محاولة استخدام البروكسيات
+    for (let i = 0; i < proxies.length; i++) {
+        const proxy = proxies[i];
         const fullUrl = proxy + encodeURIComponent(apiUrl);
-
+        
         try {
-            console.log(`🔄 محاولة جلب ${symbol} عبر Cloudflare Worker Proxy`);
-            const response = await fetch(fullUrl);
+            console.log(`🔄 محاولة جلب ${symbol} عبر البروكسي ${i + 1}/${proxies.length}`);
+            
+            const response = await this.fetchWithTimeout(fullUrl, 15000);
+            
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-
-            let data = await response.text();
-
-            try {
-                data = JSON.parse(data);
-            } catch (e) {
-                const jsonMatch = data.match(/\[.*\]/s);
-                if (jsonMatch) {
-                    data = JSON.parse(jsonMatch[0]);
-                } else {
-                    throw new Error('Invalid JSON format');
-                }
+            
+            const data = await this.parseResponse(response);
+            
+            if (Array.isArray(data) && data.length > 0) {
+                return this.processKlineData(symbol, data);
+            } else {
+                throw new Error('Invalid data format or empty array');
             }
-
-            if (!Array.isArray(data)) {
-                throw new Error('Data is not an array');
+            
+        } catch (error) {
+            console.warn(`❌ فشل البروكسي ${i + 1} لـ ${symbol}:`, error.message);
+            
+            // إذا كان هذا آخر بروكسي، ننتظر قبل المحاولة التالية
+            if (i < proxies.length - 1) {
+                await this.delay(2000); // انتظار ثانيتين بين المحاولات
             }
+        }
+    }
+    
+    // إذا فشلت كل المحاولات
+    console.error(`❌ فشل جلب البيانات التاريخية لـ ${symbol} من جميع المصادر`);
+    this.priceHistory.set(symbol, []);
+    return false;
+}
 
-            const candles = data.map(k => ({
-                time: k[0],
+// دالة مساعدة للـ fetch مع timeout
+async fetchWithTimeout(url, timeout = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+        const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+    }
+}
+
+// دالة محسنة لمعالجة الاستجابة
+async parseResponse(response) {
+    const contentType = response.headers.get('content-type');
+    let data;
+    
+    if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+    } else {
+        const text = await response.text();
+        
+        // محاولة parse كـ JSON مباشرة
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            // البحث عن JSON في النص باستخدام regex
+            const jsonMatch = text.match(/\[[\s\S]*?\]/);
+            if (jsonMatch) {
+                data = JSON.parse(jsonMatch[0]);
+            } else {
+                throw new Error('No valid JSON found in response');
+            }
+        }
+    }
+    
+    return data;
+}
+
+// دالة معالجة بيانات الشموع
+processKlineData(symbol, data) {
+    if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('Invalid kline data format');
+    }
+    
+    const candles = data.map((k, index) => {
+        try {
+            return {
+                time: parseInt(k[0]),
                 open: parseFloat(k[1]),
                 high: parseFloat(k[2]),
                 low: parseFloat(k[3]),
                 close: parseFloat(k[4]),
                 volume: parseFloat(k[5])
-            }));
-
-            this.priceHistory.set(symbol, candles);
-            console.log(`✅ تم جلب ${candles.length} شمعة للرمز ${symbol}`);
-            return;
-
+            };
         } catch (error) {
-            console.error(`❌ فشل جلب البيانات التاريخية لـ ${symbol}:`, error.message);
-            this.priceHistory.set(symbol, []);
+            console.warn(`خطأ في معالجة الشمعة ${index} للرمز ${symbol}:`, error);
+            return null;
         }
+    }).filter(candle => candle !== null);
+    
+    if (candles.length === 0) {
+        throw new Error('No valid candles after processing');
     }
+    
+    this.priceHistory.set(symbol, candles);
+    console.log(`✅ تم جلب ومعالجة ${candles.length} شمعة للرمز ${symbol}`);
+    return true;
+}
 
+// دالة انتظار
+delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+
+
+
+    
     connectWebSocket() {
         const symbols = ['btcusdt', 'ethusdt', 'adausdt', 'bnbusdt', 'xrpusdt', 'solusdt', 'dogeusdt', 'avaxusdt', 'linkusdt', 'maticusdt'];
         this.updateConnectionStatus('جاري الاتصال...', 'connecting');
