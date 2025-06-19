@@ -33,7 +33,7 @@ class LuxAlgoBreakoutAnalyzer {
         ];
 
         // جلب بيانات الدقيقة الواحدة
-        const minuteApiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
+        const minuteApiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1h&limit=500`;
         // جلب بيانات 24 ساعة
         const dailyApiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1d&limit=7`;
 
@@ -351,7 +351,7 @@ class LuxAlgoBreakoutAnalyzer {
     }
 
     connectKlineStream(symbol) {
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
+        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1h`);
         
         ws.onopen = () => {
             console.log(`تم الاتصال بـ WebSocket للرمز ${symbol}`);
