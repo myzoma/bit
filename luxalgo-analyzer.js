@@ -20,6 +20,7 @@ class LuxAlgoBreakoutAnalyzer {
 
     // ✅ نسخة مُحدثة - تستخدم Cloudflare Worker Proxy فقط
     async fetchHistoricalData(symbol) {
+          console.log("استدعاء fetchHistoricalData لـ", symbol);
         const proxy = 'https://bitter-flower-8531.dr-glume.workers.dev/?url=';
         const apiUrl = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&limit=500`;
         const fullUrl = proxy + encodeURIComponent(apiUrl);
